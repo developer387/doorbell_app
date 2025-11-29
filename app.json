@@ -3,6 +3,7 @@
     "name": "Doorbell App",
     "slug": "doorbell_app",
     "version": "1.0.0",
+    "scheme": "doorbellapp",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -24,6 +25,13 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": []
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "91f8bf99-1b5c-42b7-a235-14c2318bfc7b"
+      }
+    }
   }
 }

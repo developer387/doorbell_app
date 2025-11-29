@@ -7,19 +7,31 @@ import { Button } from '@components/Button';
 import { Title, Body, SmallText } from '@/typography';
 import { colors } from '@/styles/colors';
 import { Logo } from '@components/Logo';
+import { useGoogleLogin } from '@/hooks/useGoogleLogin';
 
 export const Signup = () => {
   const [email, setEmail] = useState('');
-  const { handleSubmit } = useForm({
+  const { handleSubmit } = useForm({});
 
-  });
+  const { promptAsync, request, isLoading, error } = useGoogleLogin();
 
   const onSubmit = (data: any) => {
     console.log(data);
+    // TODO: Implement email verification logic
   };
 
   const handleClearEmail = () => {
     setEmail('');
+  };
+
+  const handleGoogleSignIn = () => {
+    console.log('🚀 Google Sign In button pressed');
+    console.log('📋 Request object:', request);
+    if (request) {
+      promptAsync();
+    } else {
+      console.error('⚠️ Request object is not ready');
+    }
   };
 
   return (
@@ -35,6 +47,7 @@ export const Signup = () => {
             Let&#39;s get you ready for your property
           </Body>
         </View>
+
         <Input
           label="Email"
           value={email}
@@ -60,10 +73,10 @@ export const Signup = () => {
         <View style={styles.btns}>
           <Button
             variant="secondary"
-            title="Google"
-            onPress={() => {
-              /* empty */
-            }}
+            title="Continue with Google"
+            onPress={handleGoogleSignIn}
+            disabled={!request || isLoading}
+            isLoading={isLoading}
             leftIcon={
               <Image
                 source={require('../../../assets/google.png')}
@@ -85,6 +98,13 @@ export const Signup = () => {
             }
           />
         </View>
+
+        {error && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle" size={16} color={colors.error} />
+            <SmallText style={styles.errorText}>{error}</SmallText>
+          </View>
+        )}
 
         <SmallText style={styles.footerText} align="center">
           By continuing, you automatically accept our{' '}
@@ -138,7 +158,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     color: colors.textSecondary,
   },
-  btns:{
+  btns: {
     display: 'flex',
     gap: 12
   },
@@ -146,9 +166,21 @@ const styles = StyleSheet.create({
     marginTop: 16,
     color: colors.textSecondary,
     lineHeight: 18,
+    paddingHorizontal: 20,
   },
   link: {
     textDecorationLine: 'underline',
     color: colors.textSecondary,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  errorText: {
+    color: colors.error,
+    flex: 1,
   },
 });

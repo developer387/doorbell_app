@@ -1,18 +1,31 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
+import { useUser } from '@/context/UserContext';
 
 interface HomeScreenProps {
     navigation: NativeStackNavigationProp<MainStackParamList, 'Home'>;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
+    const { user, isLoggedIn } = useUser();
+
+    useEffect(() => {
+        console.log('=== HomeScreen Debug ===');
+        console.log('👤 Logged In User:', user);
+        console.log('🔐 Is Logged In:', isLoggedIn);
+        console.log('📧 Email:', user?.email);
+        console.log('📛 Display Name:', user?.displayName);
+        console.log('🆔 UID:', user?.uid);
+        console.log('========================');
+    }, [user, isLoggedIn]);
+
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
             <View style={styles.header}>
-                <Text style={styles.greeting}>Hello, User! 👋</Text>
+                <Text style={styles.greeting}>Hello, {user?.displayName || user?.email || 'User'}! 👋</Text>
                 <Text style={styles.subtitle}>Welcome to your dashboard</Text>
             </View>
 
