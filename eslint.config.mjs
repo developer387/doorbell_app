@@ -114,7 +114,7 @@ export default tseslint.config(
             'prefer-template': 'warn',
             'object-shorthand': 'warn',
             'no-nested-ternary': 'warn',
-            'typescript-eslint/no-unsafe-assignment': 'warn'
+            '@typescript-eslint/no-unsafe-assignment': 'warn'
         },
     },
 

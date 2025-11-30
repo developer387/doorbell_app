@@ -3,10 +3,10 @@ import { SmallText, Title } from '../typography';
 import React from 'react';
 import { colors } from '../styles/colors';
 
-type LogoProps = {
+interface LogoProps {
   title: string;
   description: string;
-};
+}
 
 export const Logo = ({ title, description }: LogoProps) => (
   <View style={styles.logoContainer}>

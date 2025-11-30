@@ -1,15 +1,15 @@
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-export type AuthStackParamList = {
+export interface AuthStackParamList {
+    SignIn: undefined;
     Signup: undefined;
-    Login: undefined;
-};
+}
 
-export type MainStackParamList = {
+export interface MainStackParamList {
     Home: undefined;
     Profile: undefined;
     Settings: undefined;
-};
+}
 
 export type RootStackParamList = AuthStackParamList & MainStackParamList;
 

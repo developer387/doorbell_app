@@ -1,5 +1,6 @@
-import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 // TODO: Replace with your actual Firebase configuration
 const firebaseConfig = {
@@ -13,6 +14,7 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let auth: Auth;
+let db: Firestore;
 
 if (!getApps().length) {
     app = initializeApp(firebaseConfig);
@@ -21,5 +23,6 @@ if (!getApps().length) {
 }
 
 auth = getAuth(app);
+db = getFirestore(app);
 
-export { app, auth };
+export { app, auth, db };

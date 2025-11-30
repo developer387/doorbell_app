@@ -1,26 +1,77 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
+import { useAuth } from '@/context/UserContext';
 
 export const ProfileScreen: React.FC = () => {
+    const { user, logout } = useAuth();
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+    const handleLogout = async () => {
+        Alert.alert(
+            'Sign Out',
+            'Are you sure you want to sign out?',
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
+                {
+                    text: 'Sign Out',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setIsLoggingOut(true);
+                            await logout();
+                            // Navigation will be handled automatically by RootNavigator
+                        } catch (error) {
+                            console.error('Logout error:', error);
+                            Alert.alert('Error', 'Failed to sign out. Please try again.');
+                        } finally {
+                            setIsLoggingOut(false);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    // Get initials from email or name
+    const getInitials = () => {
+        if (user?.displayName) {
+            const names = user.displayName.split(' ');
+            return names.map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        }
+        if (user?.email) {
+            return user.email.substring(0, 2).toUpperCase();
+        }
+        return 'U';
+    };
+
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
             <View style={styles.header}>
                 <View style={styles.avatarContainer}>
-                    <Text style={styles.avatarText}>JD</Text>
+                    <Text style={styles.avatarText}>{getInitials()}</Text>
                 </View>
-                <Text style={styles.name}>John Doe</Text>
-                <Text style={styles.email}>john.doe@example.com</Text>
+                <Text style={styles.name}>{user?.displayName || user?.email || 'User'}</Text>
+                <Text style={styles.email}>{user?.email || 'No email'}</Text>
             </View>
 
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Account Information</Text>
 
                 <View style={styles.infoCard}>
-                    <InfoRow label="Full Name" value="John Doe" />
-                    <InfoRow label="Email" value="john.doe@example.com" />
-                    <InfoRow label="Phone" value="+1 (555) 123-4567" />
-                    <InfoRow label="Member Since" value="January 2024" />
+                    <InfoRow label="Email" value={user?.email || 'Not available'} />
+                    <InfoRow label="User ID" value={user?.uid || 'Not available'} />
+                    <InfoRow
+                        label="Email Verified"
+                        value={user?.emailVerified ? 'Yes' : 'No'}
+                    />
+                    <InfoRow
+                        label="Account Created"
+                        value={user?.metadata?.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString() : 'Unknown'}
+                    />
                 </View>
             </View>
 
@@ -31,8 +82,16 @@ export const ProfileScreen: React.FC = () => {
                     <Text style={styles.actionButtonText}>Edit Profile</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.actionButton, styles.dangerButton]}>
-                    <Text style={[styles.actionButtonText, styles.dangerButtonText]}>Sign Out</Text>
+                <TouchableOpacity
+                    style={[styles.actionButton, styles.dangerButton]}
+                    onPress={handleLogout}
+                    disabled={isLoggingOut}
+                >
+                    {isLoggingOut ? (
+                        <ActivityIndicator color={COLORS.danger} />
+                    ) : (
+                        <Text style={[styles.actionButtonText, styles.dangerButtonText]}>Sign Out</Text>
+                    )}
                 </TouchableOpacity>
             </View>
         </ScrollView>

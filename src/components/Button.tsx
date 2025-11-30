@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, ActivityIndicator, StyleProp, ViewStyle, View } from 'react-native';
+import { TouchableOpacity, ActivityIndicator, type StyleProp, type ViewStyle, View } from 'react-native';
 import { buttonStyles } from '../styles/buttonStyles';
 import { MediumText } from '../typography';
 import { colors } from '../styles/colors';
