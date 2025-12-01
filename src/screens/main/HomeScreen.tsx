@@ -6,9 +6,15 @@ import { useAuth } from '@/context/UserContext';
 import { colors } from '@/styles/colors';
 import { MediumText } from '@/typography';
 import { FilterChips } from '@components/FilterChip';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { MainStackParamList } from '@navigation-types';
+
+type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
 export const HomeScreen = () => {
   const { user } = useAuth();
+  const navigation = useNavigation<NavigationProp>();
 
   return (
     <View style={styles.container}>
@@ -36,14 +42,17 @@ export const HomeScreen = () => {
       {/* EMPTY STATE */}
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIcon}>
-          <Plus size={32}/>
+          <Plus size={32} />
         </View>
 
         <MediumText style={styles.emptyText}>
           No property has not been added yet. Click the button below to add a property
         </MediumText>
 
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => navigation.navigate('AddProperty')}
+        >
           <Text style={styles.addButtonText}>Add Property +</Text>
         </TouchableOpacity>
       </View>

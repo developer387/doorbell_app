@@ -15,6 +15,7 @@ export interface TabParamList extends ParamListBase {
 export interface MainStackParamList extends ParamListBase {
     MainTabs: undefined;
     Settings: undefined;
+    AddProperty: undefined;
 }
 
 export type RootStackParamList = AuthStackParamList & MainStackParamList;

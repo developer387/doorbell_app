@@ -1,26 +1,25 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { HomeScreen, ProfileScreen } from '@screens/main';
+import { AddPropertyScreen, HomeScreen, ProfileScreen } from '@screens/main';
 import { type TabParamList } from '@navigation-types';
 import { colors } from '@/styles/colors';
 import { Home, PlusSquare, User } from 'lucide-react-native';
-import { View, Text } from 'react-native';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
 // Placeholder for AddProperty
-const AddPropertyPlaceholder = () => (
-  <View
-    style={{
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colors.background,
-    }}
-  >
-    <Text>Add Property Screen</Text>
-  </View>
-);
+// const AddPropertyPlaceholder = () => (
+//   <View
+//     style={{
+//       flex: 1,
+//       justifyContent: 'center',
+//       alignItems: 'center',
+//       backgroundColor: colors.background,
+//     }}
+//   >
+//     <Text>Add Property Screen</Text>
+//   </View>
+// );
 
 export const TabNavigator: React.FC = () => {
   return (
@@ -53,7 +52,7 @@ export const TabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="AddProperty"
-        component={AddPropertyPlaceholder}
+        component={AddPropertyScreen}
         options={{
           tabBarLabel: 'Add Property',
           tabBarIcon: ({ color, size }) => <PlusSquare color={color} size={size} />,

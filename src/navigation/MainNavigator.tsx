@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
-import { SettingsScreen } from '@screens/main';
+import { SettingsScreen, AddPropertyScreen } from '@screens/main';
 import { TabNavigator } from './TabNavigator';
 import { COLORS } from '@constants/theme';
 
@@ -34,6 +34,13 @@ export const MainNavigator: React.FC = () => {
         component={SettingsScreen}
         options={{
           title: 'Settings',
+        }}
+      />
+      <Stack.Screen
+        name="AddProperty"
+        component={AddPropertyScreen}
+        options={{
+          headerShown: false,
         }}
       />
     </Stack.Navigator>

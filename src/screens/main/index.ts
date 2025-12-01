@@ -1,3 +1,4 @@
 export { HomeScreen } from './HomeScreen';
 export { ProfileScreen } from './ProfileScreen';
 export { SettingsScreen } from './SettingsScreen';
+export { AddPropertyScreen } from './AddPropertyScreen';

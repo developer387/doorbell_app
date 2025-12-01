@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useForm } from 'react-hook-form';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@navigation-types';
@@ -46,7 +46,6 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
       setIsSubmitting(true);
       setSubmitError(null);
 
-      // Create user with Firebase and save to Firestore
       await signup(data.name, data.email, data.password);
 
       // Navigation will be handled automatically by RootNavigator
