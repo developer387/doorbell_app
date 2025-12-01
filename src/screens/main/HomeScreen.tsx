@@ -1,23 +1,24 @@
 import React from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 
-import { Search, Bell, Home, Car, Plus } from 'lucide-react-native';
+import { Search, Bell, Plus } from 'lucide-react-native';
 import { useAuth } from '@/context/UserContext';
+import { colors } from '@/styles/colors';
+import { MediumText } from '@/typography';
+import { FilterChips } from '@components/FilterChip';
 
 export const HomeScreen = () => {
   const { user } = useAuth();
-  console.log(user);
+
   return (
     <View style={styles.container}>
-      {/* HEADER */}
       <View style={styles.header}>
-        <Text style={styles.welcome}>Welcome, {user?.displayName?.split(' ')[0] || 'User'}</Text>
+        <Text style={styles.welcome}>Welcome, {user?.displayName?.split(' ')[0] ?? 'User'}</Text>
         <TouchableOpacity style={styles.bell}>
           <Bell size={22} color="#0f172a" />
         </TouchableOpacity>
       </View>
 
-      {/* SEARCH BAR */}
       <View style={styles.searchContainer}>
         <TextInput
           placeholder="Search property"
@@ -27,26 +28,7 @@ export const HomeScreen = () => {
         <Search size={20} color="#0f172a" />
       </View>
 
-      {/* FILTERS */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterContainer}>
-        <TouchableOpacity style={styles.activeChip}>
-          <Search size={14} color="#fff" />
-          <Text style={styles.activeChipText}> All Property</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.chip}>
-          <Home size={14} color="#0f172a" />
-          <Text style={styles.chipText}> Houses</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.chip}>
-          <Car size={14} color="#0f172a" />
-          <Text style={styles.chipText}> Vehicles</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>New</Text>
-          </View>
-        </TouchableOpacity>
-      </ScrollView>
+      <FilterChips />
 
       {/* MY PROPERTIES */}
       <Text style={styles.sectionTitle}>My properties</Text>
@@ -54,12 +36,12 @@ export const HomeScreen = () => {
       {/* EMPTY STATE */}
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIcon}>
-          <Plus size={32} color="#94a3b8" />
+          <Plus size={32}/>
         </View>
 
-        <Text style={styles.emptyText}>
+        <MediumText style={styles.emptyText}>
           No property has not been added yet. Click the button below to add a property
-        </Text>
+        </MediumText>
 
         <TouchableOpacity style={styles.addButton}>
           <Text style={styles.addButtonText}>Add Property +</Text>
@@ -72,9 +54,9 @@ export const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
     paddingTop: 50,
     paddingHorizontal: 20,
+    backgroundColor: colors.white,
   },
 
   header: {
@@ -86,92 +68,92 @@ const styles = StyleSheet.create({
   welcome: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
   },
 
   bell: {
     padding: 6,
   },
 
+  filterContent: {
+    display: 'flex',
+    flexDirection: 'row',
+    marginTop: 10,
+    paddingVertical: 12
+  },
+
   searchContainer: {
     marginTop: 20,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderColor: colors.borderColor,
+
   },
 
   input: {
     fontSize: 15,
     flex: 1,
     marginRight: 8,
-    color: '#0f172a',
-  },
-
-  filterContainer: {
-    marginTop: 20,
-    marginBottom: 10,
   },
 
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginRight: 8,
+    borderColor: colors.borderColor,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.white,
   },
 
-  chipText: {
-    color: '#0f172a',
-    fontSize: 13,
-    fontWeight: '500',
-    marginLeft: 6,
+  chipIcon: {
+    fontSize: 12,
+    marginRight: 3,
   },
 
   activeChip: {
-    backgroundColor: '#047857',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginRight: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 6,
     flexDirection: 'row',
     alignItems: 'center',
   },
 
+  chipDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.white,
+    marginRight: 5,
+  },
+
   activeChipText: {
-    color: '#ffffff',
-    fontSize: 13,
+    color: colors.white,
+    fontSize: 12,
     fontWeight: '500',
-    marginLeft: 6,
   },
 
   badge: {
-    backgroundColor: '#14b8a6',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 6,
-  },
-
-  badgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: '600',
+    backgroundColor: colors.tag,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginLeft: 5,
   },
 
   sectionTitle: {
     marginTop: 30,
     fontSize: 16,
-    fontWeight: '600',
-    color: '#0f172a',
+    fontWeight: '600'
   },
 
   emptyContainer: {
@@ -186,7 +168,6 @@ const styles = StyleSheet.create({
     width: 80,
     borderRadius: 40,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -194,20 +175,18 @@ const styles = StyleSheet.create({
 
   emptyText: {
     textAlign: 'center',
-    color: '#64748b',
-    fontSize: 14,
     marginBottom: 20,
   },
 
   addButton: {
-    backgroundColor: '#047857',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
     paddingHorizontal: 30,
     borderRadius: 12,
   },
 
   addButtonText: {
-    color: '#ffffff',
+    color: colors.white,
     fontWeight: '600',
   },
 });

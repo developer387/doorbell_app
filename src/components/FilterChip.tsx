@@ -1,78 +1,77 @@
-import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { colors } from '../styles/colors';
-import { LucideIcon } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { View, Pressable, StyleSheet } from 'react-native';
+import { MediumText, SmallText } from '@/typography';
+import { colors } from '@/styles/colors';
 
-interface FilterChipProps {
-    label: string;
-    isSelected: boolean;
-    onPress: () => void;
-    Icon?: LucideIcon;
-}
+export const FilterChips = () => {
+  const [active, setActive] = useState<string>('All Property');
 
-export const FilterChip: React.FC<FilterChipProps> = ({
-    label,
-    isSelected,
-    onPress,
-    Icon,
-}) => {
-    return (
-        <TouchableOpacity
-            style={[
-                styles.container,
-                isSelected ? styles.selectedContainer : styles.unselectedContainer,
-            ]}
-            onPress={onPress}
-            activeOpacity={0.7}
-        >
-            {Icon && (
-                <Icon
-                    size={16}
-                    color={isSelected ? colors.white : colors.textSecondary}
-                    style={styles.icon}
-                />
+  const chips = [
+    { label: 'All Property' },
+    { label: 'Houses', icon: '🏠' },
+    { label: 'Vehicles', icon: '🚗', badge: 'New' },
+  ];
+
+  return (
+    <View style={styles.filterContent}>
+      {chips.map((chip) => {
+        const isActive = active === chip.label;
+
+        return (
+          <Pressable
+            key={chip.label}
+            onPress={() => setActive(chip.label)}
+            style={[styles.chip, isActive && styles.activeChip]}
+          >
+            {chip.icon && (
+              <SmallText style={[styles.chipIcon, isActive && { color: colors.white }]}>
+                {chip.icon}
+              </SmallText>
             )}
-            <Text
-                style={[
-                    styles.label,
-                    isSelected ? styles.selectedLabel : styles.unselectedLabel,
-                ]}
-            >
-                {label}
-            </Text>
-        </TouchableOpacity>
-    );
+            <MediumText variant={isActive ? 'white' : 'black'}>{chip.label}</MediumText>
+            {chip.badge && isActive && (
+              <View style={styles.badge}>
+                <SmallText variant="white">{chip.badge}</SmallText>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 20,
-        borderWidth: 1,
-        marginRight: 8,
-    },
-    selectedContainer: {
-        backgroundColor: colors.primary,
-        borderColor: colors.primary,
-    },
-    unselectedContainer: {
-        backgroundColor: colors.white,
-        borderColor: colors.border,
-    },
-    icon: {
-        marginRight: 6,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    selectedLabel: {
-        color: colors.white,
-    },
-    unselectedLabel: {
-        color: colors.textSecondary,
-    },
+  filterContent: {
+    flexDirection: 'row',
+    marginTop: 10,
+    paddingVertical: 12,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.borderColor,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+  },
+  activeChip: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipIcon: {
+    fontSize: 12,
+    marginRight: 3,
+    color: colors.text,
+  },
+  badge: {
+    backgroundColor: colors.tag,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginLeft: 5,
+  },
 });
