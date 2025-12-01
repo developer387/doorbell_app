@@ -1,7 +1,8 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
-import { HomeScreen, ProfileScreen, SettingsScreen } from '@screens/main';
+import { SettingsScreen } from '@screens/main';
+import { TabNavigator } from './TabNavigator';
 import { COLORS } from '@constants/theme';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -22,17 +23,10 @@ export const MainNavigator: React.FC = () => {
       }}
     >
       <Stack.Screen
-        name="Home"
-        component={HomeScreen}
+        name="MainTabs"
+        component={TabNavigator}
         options={{
           headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{
-          title: 'My Profile',
         }}
       />
       <Stack.Screen

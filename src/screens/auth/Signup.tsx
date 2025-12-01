@@ -271,24 +271,7 @@ const styles = StyleSheet.create({
   cardText: {
     marginBottom: 16,
   },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    color: colors.textSecondary,
-  },
-  btns: {
-    display: 'flex',
-    gap: 12
-  },
+
   footerText: {
     marginTop: 16,
     color: colors.textSecondary,

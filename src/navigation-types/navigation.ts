@@ -1,13 +1,19 @@
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { ParamListBase } from '@react-navigation/native';
 
-export interface AuthStackParamList {
+export interface AuthStackParamList extends ParamListBase {
     SignIn: undefined;
     Signup: undefined;
 }
 
-export interface MainStackParamList {
-    Home: undefined;
-    Profile: undefined;
+export interface TabParamList extends ParamListBase {
+    HomeTab: undefined;
+    AddProperty: undefined;
+    ProfileTab: undefined;
+}
+
+export interface MainStackParamList extends ParamListBase {
+    MainTabs: undefined;
     Settings: undefined;
 }
 
