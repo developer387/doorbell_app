@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+  Dimensions
+} from 'react-native';
 import { useForm } from 'react-hook-form';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@navigation-types';
@@ -20,6 +28,8 @@ interface SignupFormData {
 interface SignupProps {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
 }
+
+const { height } = Dimensions.get('window');
 
 export const Signup: React.FC<SignupProps> = ({ navigation }) => {
   const { signup } = useAuth();
@@ -83,163 +93,137 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
   const isSubmitDisabled = !isValid || isSubmitting || Object.keys(errors).length > 0;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.logoSection}>
-        <Logo title="Door Bell" description="by Guest Registration" />
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.cardText}>
-          <Title>Welcome</Title>
-          <Body variant="default" align="center">
-            Let&#39;s get you ready for your property
-          </Body>
-        </View>
-
-        <RHFInput
-          name="name"
-          register={register}
-          setValue={setValue}
-          watch={watch}
-          label="Name"
-          placeholder="Name"
-          rules={{
-            required: 'Name is required',
-            minLength: {
-              value: 2,
-              message: 'Name must be at least 2 characters',
-            },
-          }}
-          error={errors.name?.message}
-          rightIcon={
-            nameValue && nameValue.length > 0 ? (
-              <TouchableOpacity onPress={() => handleClearField('name')}>
-                <Ionicons name="close-circle" size={18} />
-              </TouchableOpacity>
-            ) : undefined
-          }
-        />
-
-        <RHFInput
-          name="email"
-          register={register}
-          setValue={setValue}
-          watch={watch}
-          label="Email"
-          placeholder="Email"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          rules={{
-            required: 'Email is required',
-            pattern: {
-              value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-              message: 'Invalid email address',
-            },
-          }}
-          error={errors.email?.message}
-          rightIcon={
-            emailValue && emailValue.length > 0 ? (
-              <TouchableOpacity onPress={() => handleClearField('email')}>
-                <Ionicons name="close-circle" size={18} />
-              </TouchableOpacity>
-            ) : undefined
-          }
-        />
-
-        <RHFInput
-          name="password"
-          register={register}
-          setValue={setValue}
-          watch={watch}
-          label="Password"
-          placeholder="Password"
-          secureTextEntry
-          rules={{
-            required: 'Password is required',
-            minLength: {
-              value: 6,
-              message: 'Password must be at least 6 characters',
-            },
-          }}
-          error={errors.password?.message}
-          rightIcon={
-            passwordValue && passwordValue.length > 0 ? (
-              <TouchableOpacity onPress={() => handleClearField('password')}>
-                <Ionicons name="close-circle" size={18} />
-              </TouchableOpacity>
-            ) : undefined
-          }
-        />
-
-        <Button
-          title="Sign Up"
-          onPress={handleSubmit(onSubmit)}
-          disabled={isSubmitDisabled}
-          isLoading={isSubmitting}
-        />
-
-        {/*<View style={styles.dividerContainer}>*/}
-        {/*  <View style={styles.dividerLine} />*/}
-        {/*  <SmallText style={styles.dividerText}>or with</SmallText>*/}
-        {/*  <View style={styles.dividerLine} />*/}
-        {/*</View>*/}
-
-        {/*<View style={styles.btns}>*/}
-        {/*  <Button*/}
-        {/*    variant="secondary"*/}
-        {/*    title="Continue with Google"*/}
-        {/*    onPress={() => {*/}
-        {/*      // Google button is dormant - does nothing*/}
-        {/*    }}*/}
-        {/*    disabled={false}*/}
-        {/*    leftIcon={*/}
-        {/*      <Image*/}
-        {/*        source={require('../../../assets/google.png')}*/}
-        {/*        style={{ width: 16, height: 16 }}*/}
-        {/*      />*/}
-        {/*    }*/}
-        {/*  />*/}
-        {/*  <Button*/}
-        {/*    variant="secondary"*/}
-        {/*    title="Apple"*/}
-        {/*    onPress={() => {*/}
-        {/*      // Apple button is dormant - does nothing*/}
-        {/*    }}*/}
-        {/*    disabled={false}*/}
-        {/*    leftIcon={*/}
-        {/*      <Image*/}
-        {/*        source={require('../../../assets/apple.png')}*/}
-        {/*        style={{ width: 16, height: 16 }}*/}
-        {/*      />*/}
-        {/*    }*/}
-        {/*  />*/}
-        {/*</View>*/}
-
-        {submitError && (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle" size={16} color={colors.error} />
-            <SmallText style={styles.errorText}>{submitError}</SmallText>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.container}>
+          <View style={styles.logoSection}>
+            <Logo title="Door Bell" description="by Guest Registration" />
           </View>
-        )}
 
-        <TouchableOpacity
-          style={styles.signinLink}
-          onPress={() => navigation.navigate('SignIn')}
-        >
-          <SmallText style={styles.signinText}>
-            Already have an account?{' '}
-            <SmallText style={styles.signinTextBold}>Sign In</SmallText>
-          </SmallText>
-        </TouchableOpacity>
+          <View style={styles.card}>
+            <View style={styles.cardText}>
+              <Title>Welcome</Title>
+              <Body variant="default" align="center">
+                Let&#39;s get you ready for your property
+              </Body>
+            </View>
 
-        <SmallText style={styles.footerText} align="center">
-          By continuing, you automatically accept our{' '}
-          <SmallText style={styles.link}>Terms & Conditions</SmallText>,{' '}
-          <SmallText style={styles.link}>Privacy Policy</SmallText> and{' '}
-          <SmallText style={styles.link}>Cookies policy</SmallText>.
-        </SmallText>
-      </View>
-    </View>
+            <RHFInput
+              name="name"
+              register={register}
+              setValue={setValue}
+              watch={watch}
+              label="Name"
+              placeholder="Name"
+              rules={{
+                required: 'Name is required',
+                minLength: {
+                  value: 2,
+                  message: 'Name must be at least 2 characters',
+                },
+              }}
+              error={errors.name?.message}
+              rightIcon={
+                nameValue && nameValue.length > 0 ? (
+                  <TouchableOpacity onPress={() => handleClearField('name')}>
+                    <Ionicons name="close-circle" size={18} />
+                  </TouchableOpacity>
+                ) : undefined
+              }
+            />
+
+            <RHFInput
+              name="email"
+              register={register}
+              setValue={setValue}
+              watch={watch}
+              label="Email"
+              placeholder="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              rules={{
+                required: 'Email is required',
+                pattern: {
+                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                  message: 'Invalid email address',
+                },
+              }}
+              error={errors.email?.message}
+              rightIcon={
+                emailValue && emailValue.length > 0 ? (
+                  <TouchableOpacity onPress={() => handleClearField('email')}>
+                    <Ionicons name="close-circle" size={18} />
+                  </TouchableOpacity>
+                ) : undefined
+              }
+            />
+
+            <RHFInput
+              name="password"
+              register={register}
+              setValue={setValue}
+              watch={watch}
+              label="Password"
+              placeholder="Password"
+              secureTextEntry
+              rules={{
+                required: 'Password is required',
+                minLength: {
+                  value: 6,
+                  message: 'Password must be at least 6 characters',
+                },
+              }}
+              error={errors.password?.message}
+              rightIcon={
+                passwordValue && passwordValue.length > 0 ? (
+                  <TouchableOpacity onPress={() => handleClearField('password')}>
+                    <Ionicons name="close-circle" size={18} />
+                  </TouchableOpacity>
+                ) : undefined
+              }
+            />
+
+            <Button
+              title="Sign Up"
+              onPress={handleSubmit(onSubmit)}
+              disabled={isSubmitDisabled}
+              isLoading={isSubmitting}
+            />
+
+            {submitError && (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle" size={16} color={colors.error} />
+                <SmallText style={styles.errorText}>{submitError}</SmallText>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.signinLink}
+              onPress={() => navigation.navigate('SignIn')}
+            >
+              <SmallText style={styles.signinText}>
+                Already have an account?{' '}
+                <SmallText style={styles.signinTextBold}>Sign In</SmallText>
+              </SmallText>
+            </TouchableOpacity>
+
+            <SmallText style={styles.footerText} align="center">
+              By continuing, you automatically accept our{' '}
+              <SmallText style={styles.link}>Terms & Conditions</SmallText>,{' '}
+              <SmallText style={styles.link}>Privacy Policy</SmallText> and{' '}
+              <SmallText style={styles.link}>Cookies policy</SmallText>.
+            </SmallText>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -250,9 +234,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   logoSection: {
-    flex: 1,
+    height: height * 0.35,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 40,
   },
   card: {
     backgroundColor: colors.white,
@@ -266,6 +251,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 10,
+    flex: 1,
   },
   cardText: {
     marginBottom: 16,
