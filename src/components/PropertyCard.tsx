@@ -58,6 +58,7 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     backgroundColor: colors.white,
+    marginVertical: 8
   },
   flexRowCenter: {
     flexDirection: 'row',

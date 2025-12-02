@@ -1,3 +1,5 @@
+import * as Location from 'expo-location';
+
 /**
  * Generate a UUID v4
  * This is a simple implementation for mobile use
@@ -12,20 +14,41 @@ export const generateUUID = (): string => {
 
 /**
  * Reverse geocode coordinates to get address
+ * Uses expo-location's built-in reverse geocoding for reliability
  */
 export const reverseGeocode = async (
     latitude: number,
     longitude: number
 ): Promise<string> => {
     try {
-        // Using a simple OpenStreetMap Nominatim API for reverse geocoding
-        const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-        );
-        const data = await response.json();
-        return data.display_name || `${latitude}, ${longitude}`;
+        const result = await Location.reverseGeocodeAsync({
+            latitude,
+            longitude,
+        });
+
+        if (result && result.length > 0) {
+            const address = result[0];
+
+            // Build a formatted address string from the components
+            const parts: string[] = [
+                address.streetNumber,
+                address.street,
+                address.city,
+                address.region,
+                address.postalCode,
+                address.country,
+            ].filter((part): part is string => Boolean(part)); // Remove null/undefined values
+
+            if (parts.length > 0) {
+                return parts.join(', ');
+            }
+        }
+
+        // Fallback to coordinates if no address found
+        return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     } catch (error) {
         console.error('Error reverse geocoding:', error);
-        return `${latitude}, ${longitude}`;
+        // Return coordinates as fallback
+        return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     }
 };

@@ -5,7 +5,6 @@ import { type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type MainStackParamList } from '@navigation-types';
 import { ArrowLeft, Plus } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
-import empty from '../../../assets/empty.png';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 type RouteProps = RouteProp<MainStackParamList, 'LinkSmartLock'>;
@@ -55,10 +54,10 @@ export const LinkSmartLockScreen = () => {
 
         <View style={styles.emptyStateContainer}>
           {/* Placeholder for the image in Figma */}
-          <View style={styles.imagePlaceholder}>
-            <Plus size={40} color="#cbd5e1" />
-          </View>
-          <Image src={empty} style={{ width: 139, height: 112 }} />
+          <Image
+            source={require('../../../assets/empty.png')}
+            style={{ width: 139, height: 112, marginBottom: 16 }}
+          />
           <Text style={styles.emptyStateText}>No Brand has been added yet.</Text>
           <Text style={styles.emptyStateSubtext}>Click the button below to add a Brand</Text>
 

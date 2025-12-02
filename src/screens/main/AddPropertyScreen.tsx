@@ -73,30 +73,69 @@ export const AddPropertyScreen = () => {
     try {
       setLoadingLocation(true);
 
+      // Request location permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
           'Permission Denied',
-          'Location permission is required to use this feature'
+          'Location permission is required to use this feature. Please enable it in your device settings.'
         );
         setLoadingLocation(false);
         return;
       }
 
+      // Get current position with high accuracy
       const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.Highest,
+        timeInterval: 5000,
+        distanceInterval: 0,
       });
 
       const { latitude, longitude } = currentLocation.coords;
+
+      // Validate coordinates
+      if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
+        throw new Error('Invalid coordinates received');
+      }
+
+      // Set location for map display
       setLocation({ latitude, longitude });
 
+      // Reverse geocode to get address
       const addressString = await reverseGeocode(latitude, longitude);
-      setAddress(addressString);
 
+      if (!addressString) {
+        throw new Error('Failed to retrieve address');
+      }
+
+      setAddress(addressString);
       setLoadingLocation(false);
+
+      // Show success feedback
+      Alert.alert(
+        'Location Retrieved',
+        'Your current location has been successfully retrieved and converted to an address.'
+      );
     } catch (error) {
       console.error('Error getting location:', error);
-      Alert.alert('Error', 'Failed to get current location');
+
+      let errorMessage = 'Failed to get current location. ';
+
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          errorMessage += 'Location request timed out. Please ensure GPS is enabled and try again.';
+        } else if (error.message.includes('Invalid coordinates')) {
+          errorMessage += 'Received invalid location data. Please try again.';
+        } else if (error.message.includes('address')) {
+          errorMessage += 'Could not convert location to address. Please enter manually.';
+        } else {
+          errorMessage += error.message;
+        }
+      } else {
+        errorMessage += 'Please ensure location services are enabled and try again.';
+      }
+
+      Alert.alert('Error', errorMessage);
       setLoadingLocation(false);
     }
   };
