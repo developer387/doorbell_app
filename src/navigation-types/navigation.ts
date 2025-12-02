@@ -16,6 +16,7 @@ export interface MainStackParamList extends ParamListBase {
     MainTabs: undefined;
     Settings: undefined;
     AddProperty: undefined;
+    LinkSmartLock: { propertyId: string };
 }
 
 export type RootStackParamList = AuthStackParamList & MainStackParamList;

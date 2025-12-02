@@ -10,11 +10,18 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { CameraView, Camera } from 'expo-camera';
+import * as Location from 'expo-location';
+import MapView, { Marker } from 'react-native-maps';
 import { ArrowLeft, MapPin, QrCode } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
+import { useAuth } from '@/context/UserContext';
+import { Dropdown } from '@/components/Dropdown';
+import { generateUUID, reverseGeocode } from '@/utils/helpers';
+import { addDoc, collection } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
@@ -22,14 +29,21 @@ export const AddPropertyScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
-  const [qrData, setQrData] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const { user } = useAuth();
 
   // Form state
+  const [propertyId, setPropertyId] = useState<string>('');
   const [category, setCategory] = useState('');
   const [propertyName, setPropertyName] = useState('');
   const [address, setAddress] = useState('');
+  const [location, setLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
     const getCameraPermissions = async () => {
@@ -44,26 +58,94 @@ export const AddPropertyScreen = () => {
     setCameraActive(true);
   };
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
+  const handleBarCodeScanned = () => {
     setScanned(true);
-    setQrData(data);
+
+    // Auto-generate UUID
+    const uuid = generateUUID();
+    setPropertyId(uuid);
+
     setCameraActive(false);
     setShowForm(true);
   };
 
-  const handleSubmit = () => {
-    if (!category || !propertyName || !address) {
-      Alert.alert('Error', 'Please fill in all fields');
+  const handleUseCurrentLocation = async () => {
+    try {
+      setLoadingLocation(true);
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Location permission is required to use this feature'
+        );
+        setLoadingLocation(false);
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude } = currentLocation.coords;
+      setLocation({ latitude, longitude });
+
+      const addressString = await reverseGeocode(latitude, longitude);
+      setAddress(addressString);
+
+      setLoadingLocation(false);
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Error', 'Failed to get current location');
+      setLoadingLocation(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!category) {
+      Alert.alert('Error', 'Please select a category');
       return;
     }
 
-    // TODO: Submit the form data along with QR code data
-    Alert.alert('Success', `Property added!\nQR Data: ${qrData}`, [
-      {
-        text: 'OK',
-        onPress: () => navigation.goBack(),
-      },
-    ]);
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to add a property');
+      return;
+    }
+
+    try {
+      console.log('Submitting property data...');
+      setIsSaving(true);
+
+      const id = propertyId || generateUUID();
+      setPropertyId(id);
+
+      const propertyData = {
+        propertyId: id,
+        category,
+        propertyName: propertyName || null,
+        address: address || null,
+        location: location || null,
+        smartLocks: null,
+        userId: user.uid,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save to Firestore
+      console.log('Calling function to submit property data...');
+
+      await addDoc(collection(db, 'properties'), propertyData);
+
+      console.log('Submitted property data:', propertyData);
+
+      setIsSaving(false);
+
+      // Navigate to Link Smart Lock screen
+      navigation.navigate('LinkSmartLock', { propertyId: id });
+    } catch (error) {
+      console.error('Error saving property:', error);
+      Alert.alert('Error', 'Failed to save property. Please check console.');
+      setIsSaving(false);
+    }
   };
 
   if (hasPermission === null) {
@@ -85,7 +167,6 @@ export const AddPropertyScreen = () => {
     );
   }
 
-  // Show camera scanner
   if (cameraActive && !showForm) {
     return (
       <View style={styles.container}>
@@ -123,7 +204,8 @@ export const AddPropertyScreen = () => {
             style={styles.rescanButton}
             onPress={() => {
               setScanned(false);
-              setQrData(null);
+              setPropertyId('');
+              setShowForm(false);
             }}
           >
             <Text style={styles.rescanButtonText}>Tap to Scan Again</Text>
@@ -133,7 +215,6 @@ export const AddPropertyScreen = () => {
     );
   }
 
-  // Show form after scanning
   if (showForm) {
     return (
       <View style={styles.container}>
@@ -148,21 +229,16 @@ export const AddPropertyScreen = () => {
         <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
           <Text style={styles.subtitle}>Enter your property details</Text>
 
-          {/* Category Dropdown */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Category</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Category"
-                placeholderTextColor="#94a3b8"
-                value={category}
-                onChangeText={setCategory}
-              />
-            </View>
+            <Dropdown
+              label="Category"
+              placeholder="Category"
+              value={category}
+              onValueChange={setCategory}
+              options={['Property', 'Vehicle']}
+            />
           </View>
 
-          {/* Property Name */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Property name</Text>
             <View style={styles.inputContainer}>
@@ -176,7 +252,6 @@ export const AddPropertyScreen = () => {
             </View>
           </View>
 
-          {/* Address */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Address</Text>
             <View style={styles.inputContainer}>
@@ -189,35 +264,56 @@ export const AddPropertyScreen = () => {
                 multiline
               />
             </View>
-            <TouchableOpacity style={styles.locationButton}>
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={handleUseCurrentLocation}
+              disabled={loadingLocation}
+            >
               <MapPin size={16} color={colors.primary} />
-              <Text style={styles.locationButtonText}>Use Current Location</Text>
+              <Text style={styles.locationButtonText}>
+                {loadingLocation ? 'Getting location...' : 'Use Current Location'}
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* QR Data Display */}
-          {qrData && (
-            <View style={styles.qrDataContainer}>
-              <Text style={styles.qrDataLabel}>Scanned QR Code:</Text>
-              <Text style={styles.qrDataText}>{qrData}</Text>
+          {location && (
+            <View style={styles.mapContainer}>
+              <MapView
+                style={styles.map}
+                initialRegion={{
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }}
+                  title="Property Location"
+                />
+              </MapView>
             </View>
           )}
 
-          {/* Map Placeholder */}
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.mapPlaceholderText}>Map will be displayed here</Text>
-          </View>
-
-          {/* Submit Button */}
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitButtonText}>Proceed</Text>
+          <TouchableOpacity
+            style={[styles.submitButton, isSaving && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Text style={styles.submitButtonText}>Proceed</Text>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </View>
     );
   }
 
-  // Initial screen with button to start scanning
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -418,33 +514,16 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontWeight: '500',
   },
-  qrDataContainer: {
-    backgroundColor: '#f1f5f9',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
-  },
-  qrDataLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.dark,
-    marginBottom: 4,
-  },
-  qrDataText: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  mapPlaceholder: {
-    height: 200,
-    backgroundColor: '#f1f5f9',
+  mapContainer: {
+    height: 250,
     borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+    overflow: 'hidden',
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.borderColor,
   },
-  mapPlaceholderText: {
-    fontSize: 14,
-    color: '#94a3b8',
+  map: {
+    flex: 1,
   },
   submitButton: {
     backgroundColor: colors.primary,
@@ -452,6 +531,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 40,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: {
     color: colors.white,
