@@ -4,6 +4,7 @@ import type { MainStackParamList } from '@navigation-types';
 import { SettingsScreen, AddPropertyScreen, LinkSmartLockScreen } from '@screens/main';
 import { TabNavigator } from './TabNavigator';
 import { COLORS } from '@constants/theme';
+import { PropertyDetails } from '@screens/main/PropertyDetails';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
@@ -46,6 +47,13 @@ export const MainNavigator: React.FC = () => {
       <Stack.Screen
         name="LinkSmartLock"
         component={LinkSmartLockScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="PropertyDetails"
+        component={PropertyDetails}
         options={{
           headerShown: false,
         }}

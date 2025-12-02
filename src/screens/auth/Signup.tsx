@@ -8,6 +8,7 @@ import {
   Platform,
   Dimensions
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useForm } from 'react-hook-form';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@navigation-types';
@@ -32,6 +33,7 @@ interface SignupProps {
 const { height } = Dimensions.get('window');
 
 export const Signup: React.FC<SignupProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { signup } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
         bounces={false}
       >
         <View style={styles.container}>
-          <View style={styles.logoSection}>
+          <View style={[styles.logoSection, { marginTop: insets.top + 20 }]}>
             <Logo title="Door Bell" description="by Guest Registration" />
           </View>
 
@@ -237,7 +239,6 @@ const styles = StyleSheet.create({
     height: height * 0.35,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 40,
   },
   card: {
     backgroundColor: colors.white,
@@ -254,6 +255,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardText: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
   },
 
@@ -290,4 +294,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

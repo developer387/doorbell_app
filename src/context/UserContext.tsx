@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext, type ReactNode } from 'react';
-import { type User, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { type User, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../config/firebase';
@@ -85,6 +85,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
 
+            // Update the user's display name in Firebase Auth
+            await updateProfile(newUser, {
+                displayName: name,
+            });
+
             // Save user data to Firestore
             await setDoc(doc(db, 'users', newUser.uid), {
                 uid: newUser.uid,
@@ -93,7 +98,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 createdAt: new Date().toISOString(),
             });
 
-            setUser(newUser);
+            // Refresh the user object to get the updated displayName
+            await newUser.reload();
+            setUser(auth.currentUser);
         } catch (error) {
             console.error('Error signing up:', error);
             throw error;

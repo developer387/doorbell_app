@@ -8,7 +8,9 @@ import {
   ScrollView,
   Platform,
   Dimensions,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useForm } from 'react-hook-form';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '@navigation-types';
@@ -32,6 +34,7 @@ interface SignInProps {
 const { height } = Dimensions.get('window');
 
 export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -98,13 +101,14 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <StatusBar translucent barStyle="dark-content" />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
         <View style={styles.container}>
-          <View style={styles.logoSection}>
+          <View style={[styles.logoSection, { marginTop: insets.top + 20 }]}>
             <Logo title="Door Bell" description="by Guest Registration" />
           </View>
 
@@ -251,7 +255,6 @@ const styles = StyleSheet.create({
     height: height * 0.35,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 40,
   },
   card: {
     backgroundColor: colors.white,
@@ -268,6 +271,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardText: {
+    display: 'flex',
+    alignItems: 'center',
     marginBottom: 16,
   },
   dividerContainer: {

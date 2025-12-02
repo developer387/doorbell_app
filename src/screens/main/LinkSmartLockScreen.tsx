@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type MainStackParamList } from '@navigation-types';
-import { ArrowLeft, Plus } from 'lucide-react-native';
+import { ArrowLeft,  } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
@@ -15,7 +15,6 @@ export const LinkSmartLockScreen = () => {
   const { propertyId } = route.params;
 
   const handleSkip = () => {
-    // Navigate to home or wherever appropriate
     navigation.navigate('MainTabs');
   };
 

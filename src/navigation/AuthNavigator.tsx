@@ -12,6 +12,7 @@ export const AuthNavigator: React.FC = () => {
       initialRouteName="SignIn"
       screenOptions={{
         headerShown: false,
+        headerShadowVisible: false,
         contentStyle: { backgroundColor: COLORS.background },
       }}
     >

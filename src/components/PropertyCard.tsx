@@ -1,8 +1,9 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, TouchableOpacity } from 'react-native';
 import { Body, MediumText, SmallText } from '@/typography';
 import { colors } from '@/styles/colors';
 import { ChevronRight } from 'lucide-react-native';
 import { type Property } from '@/types';
+import { useNavigation } from '@react-navigation/native';
 
 interface PropertyCardProps {
   property: Property;
@@ -17,6 +18,11 @@ const ActiveBadge = () => (
 const LockStatusDot = () => <View style={styles.lockStatusDot} />;
 
 export const PropertyCard = ({ property }: PropertyCardProps) => {
+  const navigation = useNavigation();
+
+  const handlePress = () => {
+  navigation.navigate('PropertyDetails', { propertyId: property.propertyId })
+}
 
   return (
     <View style={styles.container}>
@@ -25,9 +31,11 @@ export const PropertyCard = ({ property }: PropertyCardProps) => {
           <Body weight="bolder" variant="black">
             {property?.propertyName}
           </Body>
-          <MediumText style={styles.addressText}>C.29 Sur 3117, Benito Julrez, 7240..</MediumText>
+          <MediumText style={styles.addressText}>{property.address}</MediumText>
         </View>
-        <ChevronRight size={24} color={colors.textSecondary} />
+        <TouchableOpacity onPress={handlePress}>
+          <ChevronRight size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.statusSection}>
