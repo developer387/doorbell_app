@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddPropertyScreen, HomeScreen, ProfileScreen } from '@screens/main';
 import { type TabParamList } from '@navigation-types';
 import { colors } from '@/styles/colors';
@@ -7,21 +8,9 @@ import { Home, PlusSquare, User } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
-// Placeholder for AddProperty
-// const AddPropertyPlaceholder = () => (
-//   <View
-//     style={{
-//       flex: 1,
-//       justifyContent: 'center',
-//       alignItems: 'center',
-//       backgroundColor: colors.background,
-//     }}
-//   >
-//     <Text>Add Property Screen</Text>
-//   </View>
-// );
-
 export const TabNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -31,8 +20,8 @@ export const TabNavigator: React.FC = () => {
         tabBarStyle: {
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
           paddingTop: 8,
           backgroundColor: colors.white,
         },
