@@ -84,13 +84,6 @@ const styles = StyleSheet.create({
     padding: 6,
   },
 
-  filterContent: {
-    display: 'flex',
-    flexDirection: 'row',
-    marginTop: 10,
-    paddingVertical: 12
-  },
-
   searchContainer: {
     marginTop: 20,
     borderWidth: 1,
@@ -108,55 +101,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     flex: 1,
     marginRight: 8,
-  },
-
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.borderColor,
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginRight: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-  },
-
-  chipIcon: {
-    fontSize: 12,
-    marginRight: 3,
-  },
-
-  activeChip: {
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginRight: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  chipDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.white,
-    marginRight: 5,
-  },
-
-  activeChipText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-
-  badge: {
-    backgroundColor: colors.tag,
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    marginLeft: 5,
   },
 
   sectionTitle: {
