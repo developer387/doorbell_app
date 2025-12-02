@@ -34,7 +34,6 @@ export const AddPropertyScreen = () => {
   const [isSaving, setIsSaving] = useState(false);
   const { user } = useAuth();
 
-  // Form state
   const [propertyId, setPropertyId] = useState<string>('');
   const [category, setCategory] = useState('');
   const [propertyName, setPropertyName] = useState('');
@@ -73,7 +72,6 @@ export const AddPropertyScreen = () => {
     try {
       setLoadingLocation(true);
 
-      // Request location permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
@@ -84,7 +82,6 @@ export const AddPropertyScreen = () => {
         return;
       }
 
-      // Get current position with high accuracy
       const currentLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Highest,
         timeInterval: 5000,
@@ -93,15 +90,12 @@ export const AddPropertyScreen = () => {
 
       const { latitude, longitude } = currentLocation.coords;
 
-      // Validate coordinates
       if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
         throw new Error('Invalid coordinates received');
       }
 
-      // Set location for map display
       setLocation({ latitude, longitude });
 
-      // Reverse geocode to get address
       const addressString = await reverseGeocode(latitude, longitude);
 
       if (!addressString) {
@@ -111,7 +105,6 @@ export const AddPropertyScreen = () => {
       setAddress(addressString);
       setLoadingLocation(false);
 
-      // Show success feedback
       Alert.alert(
         'Location Retrieved',
         'Your current location has been successfully retrieved and converted to an address.'
@@ -152,7 +145,6 @@ export const AddPropertyScreen = () => {
     }
 
     try {
-      console.log('Submitting property data...');
       setIsSaving(true);
 
       const id = propertyId || generateUUID();
@@ -169,16 +161,11 @@ export const AddPropertyScreen = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // Save to Firestore
-      console.log('Calling function to submit property data...');
 
       await addDoc(collection(db, 'properties'), propertyData);
 
-      console.log('Submitted property data:', propertyData);
-
       setIsSaving(false);
 
-      // Navigate to Link Smart Lock screen
       navigation.navigate('LinkSmartLock', { propertyId: id });
     } catch (error) {
       console.error('Error saving property:', error);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 
 import { Search, Bell, Plus } from 'lucide-react-native';
 import { useAuth } from '@/context/UserContext';
@@ -27,51 +27,60 @@ export const HomeScreen = () => {
         <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.welcome}>Welcome, {user?.displayName?.split(' ')[0] ?? 'User'}</Text>
-        <TouchableOpacity style={styles.bell}>
-          <Bell size={22} color="#0f172a" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <TextInput
-          placeholder="Search property"
-          style={styles.input}
-          placeholderTextColor="#94a3b8"
-        />
-        <Search size={20} color="#0f172a" />
-      </View>
-
-      <FilterChips />
-
-      <Body style={styles.sectionTitle} weight="bolder">My properties</Body>
-
-      {properties.length > 0 ? (
-        properties.map((property) => (
-          <PropertyCard key={property.propertyId} property={property} />
-        ))
-      ) : (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIcon}>
-            <Plus size={32} />
-          </View>
-
-          <MediumText style={styles.emptyText}>
-            No property has not been added yet. Click the button below to add a property
-          </MediumText>
-
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => navigation.navigate('AddProperty')}
-          >
-            <Text style={styles.addButtonText}>Add Property +</Text>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.welcome}>
+            Welcome, {user?.displayName?.split(' ')[0] ?? 'User'}
+          </Text>
+          <TouchableOpacity style={styles.bell}>
+            <Bell size={22} color="#0f172a" />
           </TouchableOpacity>
         </View>
-      )}
 
+        <View style={styles.searchContainer}>
+          <TextInput
+            placeholder="Search property"
+            style={styles.input}
+            placeholderTextColor="#94a3b8"
+          />
+          <Search size={20} color="#0f172a" />
+        </View>
+
+        <FilterChips />
+
+        <Body style={styles.sectionTitle} weight="bolder">
+          My properties
+        </Body>
+
+        {properties.length > 0 ? (
+          properties.map((property) => (
+            <PropertyCard key={property.propertyId} property={property} />
+          ))
+        ) : (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIcon}>
+              <Plus size={32} />
+            </View>
+
+            <MediumText style={styles.emptyText}>
+              No property has not been added yet. Click the button below to add a property
+            </MediumText>
+
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => navigation.navigate('AddProperty')}
+            >
+              <Text style={styles.addButtonText}>Add Property +</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 };
@@ -80,7 +89,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 50,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     backgroundColor: colors.white,
   },
   loadingContainer: {
