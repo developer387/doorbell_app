@@ -35,7 +35,7 @@ export const TabNavigator: React.FC = () => {
         name="HomeTab"
         component={HomeScreen}
         options={{
-          tabBarLabel: 'Search',
+          tabBarLabel: 'Properties',
           tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
         }}
       />
