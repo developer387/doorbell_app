@@ -4,11 +4,14 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-nativ
 import { Search, Bell, Plus } from 'lucide-react-native';
 import { useAuth } from '@/context/UserContext';
 import { colors } from '@/styles/colors';
-import { MediumText } from '@/typography';
+import { MediumText, Body } from '@/typography';
 import { FilterChips } from '@components/FilterChip';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
+import { useUserProperties } from '@/hooks/useUserProperties';
+import { ActivityIndicator } from 'react-native';
+import { PropertyCard } from '@/components';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
@@ -16,6 +19,14 @@ export const HomeScreen = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();
 
+  const { properties, loading } = useUserProperties();
+
+  if (loading)
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -36,26 +47,31 @@ export const HomeScreen = () => {
 
       <FilterChips />
 
-      {/* MY PROPERTIES */}
-      <Text style={styles.sectionTitle}>My properties</Text>
+      <Body style={styles.sectionTitle} weight="bolder">My properties</Body>
 
-      {/* EMPTY STATE */}
-      <View style={styles.emptyContainer}>
-        <View style={styles.emptyIcon}>
-          <Plus size={32} />
+      {properties.length > 0 ? (
+        properties.map((property) => (
+          <PropertyCard key={property.propertyId} property={property} />
+        ))
+      ) : (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIcon}>
+            <Plus size={32} />
+          </View>
+
+          <MediumText style={styles.emptyText}>
+            No property has not been added yet. Click the button below to add a property
+          </MediumText>
+
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => navigation.navigate('AddProperty')}
+          >
+            <Text style={styles.addButtonText}>Add Property +</Text>
+          </TouchableOpacity>
         </View>
+      )}
 
-        <MediumText style={styles.emptyText}>
-          No property has not been added yet. Click the button below to add a property
-        </MediumText>
-
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AddProperty')}
-        >
-          <Text style={styles.addButtonText}>Add Property +</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 };
@@ -67,7 +83,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: colors.white,
   },
-
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -94,7 +114,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderColor: colors.borderColor,
-
   },
 
   input: {
@@ -104,9 +123,7 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    marginTop: 30,
-    fontSize: 16,
-    fontWeight: '600'
+    marginVertical: 8,
   },
 
   emptyContainer: {

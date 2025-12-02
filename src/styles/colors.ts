@@ -1,10 +1,10 @@
 export const colors = {
-  primary: '#047857', // Green from the button
+  primary: '#047857',
   primaryDark: '#005C4B',
-  background: '#FDFBF7', // Creamy background
+  background: '#FDFBF7',
   white: '#FFFFFF',
   black: '#000000',
-  dark: '#0f172a', // Dark text color
+  dark: '#0f172a',
   text: '#1A1A1A',
   textSecondary: '#666666',
   border: '#E5E5E5',
@@ -12,5 +12,8 @@ export const colors = {
   success: '#007E68',
   googleBorder: '#E5E5E5',
   tag: '#14B8A6',
-  borderColor: '#E2E8F0'
+  borderColor: '#E2E8F0',
+  activeTagBg: '#E0F7E9',
+  active: '#00A854',
+  tagBg: '#CAC5CD',
 };
