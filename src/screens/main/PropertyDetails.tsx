@@ -7,7 +7,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { useAuth } from '@/context/UserContext';
 import { Title, Body, SmallText } from '@/typography';
-import { FilterChips, Loading } from '@/components';
+import { type ChipItem, FilterChips, Loading } from '@/components';
 import { useGetUserProperty } from '@/hooks';
 
 type PropertyDetailsRouteProp = RouteProp<MainStackParamList, 'PropertyDetails'>;
