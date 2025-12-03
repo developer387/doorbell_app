@@ -51,6 +51,9 @@ export const textStyles = StyleSheet.create({
   black: {
     color: colors.black,
   },
+  secondary: {
+    color: colors.textSecondary,
+  },
   success: {
     color: colors.success,
   },

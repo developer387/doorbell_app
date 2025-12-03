@@ -3,7 +3,7 @@ import { Text, type TextProps, type StyleProp, type TextStyle } from 'react-nati
 import { textStyles } from '@/styles/textStyles';
 
 export interface BaseTextProps extends TextProps {
-  variant?: 'primary' | 'black' | 'success' | 'error' | 'default' | 'white';
+  variant?: 'primary' | 'secondary' | 'black' | 'success' | 'error' | 'default' | 'white';
   size?: 'title' | 'heading' | 'body' | 'medium' | 'small' | 'extraSmall';
   align?: 'left' | 'center' | 'right';
   weight?: 'light' | 'normal' | 'bold' | 'bolder';

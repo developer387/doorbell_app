@@ -11,9 +11,15 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { useUserProperties } from '@/hooks/useUserProperties';
 import { ActivityIndicator } from 'react-native';
-import { PropertyCard } from '@/components';
+import { Loading, PropertyCard } from '@/components';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
+
+const chips: ChipItem[] = [
+  { label: 'All Property', value: 'All Property' },
+  { label: 'Houses', value: 'Houses', icon: '🏠' },
+  { label: 'Vehicles', value: 'Vehicles', icon: '🚗', badge: 'New' },
+];
 
 export const HomeScreen = () => {
   const { user } = useAuth();
@@ -21,12 +27,7 @@ export const HomeScreen = () => {
 
   const { properties, loading } = useUserProperties();
 
-  if (loading)
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
-    );
+  if (loading) return <Loading />
 
   return (
     <View style={styles.container}>
@@ -52,7 +53,7 @@ export const HomeScreen = () => {
           <Search size={20} color="#0f172a" />
         </View>
 
-        <FilterChips />
+        <FilterChips items={chips} />
 
         <Body style={styles.sectionTitle} weight="bolder">
           My properties
@@ -91,11 +92,6 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 16,
     backgroundColor: colors.white,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',

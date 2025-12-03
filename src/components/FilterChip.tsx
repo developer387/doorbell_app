@@ -1,22 +1,27 @@
 import React from 'react';
-
 import { ScrollableChipList } from '@components/ScrollableChipList';
 
-export const FilterChips = () => {
+interface ChipItem {
+  label: string;
+  value: string;
+  icon?: string;
+  badge?: string;
+  count?: number;
+}
 
-  const chips = [
-    { label: 'All Property', value: 'All Property' },
-    { label: 'Houses', value: 'Houses', icon: '🏠',  },
-    { label: 'Vehicles', value: 'Vehicles', icon: '🚗',  badge: 'New' },
-  ];
+export interface FilterChipsProps {
+  items?: ChipItem[];
+}
+
+export const FilterChips = ({ items }: FilterChipsProps) => {
+
 
   return (
     <ScrollableChipList
-      items={chips}
+      items={ items }
       onItemPress={() => {}}
       buttonType="filled"
       showCounts={true}
     />
   );
 };
-
