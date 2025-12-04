@@ -6,14 +6,14 @@ import { LucideIcon } from 'lucide-react-native';
 
 export interface ChipItem {
   label: string;
-  icon?: LucideIcon | string; // Can be a Lucide icon component or emoji string
+  icon?: LucideIcon | string;
   count?: number;
   badge?: string;
-  value?: string; // Optional value for the chip (defaults to label)
+  value: string;
 }
 
 interface ScrollableChipListProps {
-  items: ChipItem[];
+  items?: ChipItem[];
   activeItem?: string;
   onItemPress?: (item: ChipItem) => void;
   buttonType?: 'filled' | 'outlined' | 'minimal';
@@ -41,9 +41,10 @@ export const ScrollableChipList: React.FC<ScrollableChipListProps> = ({
   textStyle,
   activeTextStyle,
 }) => {
-  const [internalActive, setInternalActive] = useState<string>(
-    items[0]?.value ?? items[0]?.label ?? ''
-  );
+  const [internalActive, setInternalActive] = useState<string>(() => {
+    if (!items?.length) return '';
+    return items[0].value ?? items[0].label ?? '';
+  });
 
   const active = activeItem ?? internalActive;
 
@@ -100,7 +101,7 @@ export const ScrollableChipList: React.FC<ScrollableChipListProps> = ({
       contentContainerStyle={[styles.scrollContent, containerStyle]}
       style={styles.scrollContainer}
     >
-      {items.map((item, index) => {
+      {items?.map((item, index) => {
         const itemValue = item.value ?? item.label;
         const isActive = active === itemValue;
 
@@ -169,7 +170,6 @@ const styles = StyleSheet.create({
   },
   filledInactive: {
     backgroundColor: colors.white,
-    borderWidth: 0,
     borderWidth: 1,
     borderColor: colors.borderColor
   },
