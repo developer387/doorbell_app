@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '@/navigation-types';
-import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Text, TextInput } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Image } from 'react-native';
 import { ArrowLeft, Check } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { useAuth } from '@/context/UserContext';
@@ -12,7 +13,7 @@ import { useGetUserProperty } from '@/hooks';
 
 type PropertyDetailsRouteProp = RouteProp<MainStackParamList, 'PropertyDetails'>;
 
-const DetailRow = ({ label, value, isStatus = false }) => (
+const DetailRow = ({ label, value = '', isStatus = false }: { label: string; value?: string; isStatus?: boolean }) => (
   <View style={styles.detailRow}>
     <Body>{label}:</Body>
     {isStatus ? (
@@ -29,13 +30,13 @@ const DetailRow = ({ label, value, isStatus = false }) => (
 
 export const PropertyDetails = () => {
   const { user } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const [isGuestAccessEnabled, setIsGuestAccessEnabled] = useState(true);
   const route = useRoute<PropertyDetailsRouteProp>();
   const { propertyId } = route.params;
 
   const { property, loading } = useGetUserProperty(user?.uid, propertyId);
-  const locks = property?.smartLocks;
+
 
   const chips: ChipItem[] = [
     { label: 'Property Details', value: 'propertyDetails' },
@@ -102,34 +103,59 @@ export const PropertyDetails = () => {
 
       )}
       {activeChip === 'locks' && (
-        {locks.map((lock) => (
-            <View key={lock.device_id} style={styles.lockItem}>
-              <View style={styles.lockInfo}>
-                <View style={styles.lockIconContainer}>
-                  <Text style={styles.lockIconText}>🔒</Text>
+        <ScrollView style={styles.contentScroll}>
+          {property?.smartLocks && property.smartLocks.length > 0 ? (
+            <View style={styles.locksContainer}>
+              {/* Group locks by manufacturer */}
+              {Object.entries(
+                property.smartLocks.reduce((acc, lock) => {
+                  const manufacturer = lock.manufacturer || 'Unknown';
+                  if (!acc[manufacturer]) {
+                    acc[manufacturer] = [];
+                  }
+                  acc[manufacturer].push(lock);
+                  return acc;
+                }, {} as Record<string, typeof property.smartLocks>)
+              ).map(([manufacturer, locks]) => (
+                <View key={manufacturer} style={styles.lockBrandCard}>
+                  {/* Brand Header */}
+                  <View style={styles.lockBrandHeader}>
+                    <Body weight="bolder">{manufacturer}</Body>
+                  </View>
+
+                  {/* Locks List */}
+                  {locks.map((lock) => (
+                    <View key={lock.device_id} style={styles.lockItemRow}>
+                      <View style={styles.lockItemLeft}>
+                        <Image
+                          source={require('../../../assets/remote.png')}
+                          style={styles.lockItemIcon}
+                          resizeMode="contain"
+                        />
+                        <View style={styles.lockItemInfo}>
+                          <View style={styles.lockItemNameRow}>
+                            <Body weight="bolder">{lock.display_name}</Body>
+                            <Check size={16} color={colors.primary} strokeWidth={3} />
+                          </View>
+                          <SmallText variant="secondary">{manufacturer}</SmallText>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
                 </View>
-                    <TouchableOpacity onPress={() => handleStartEditLock(lock)}>
-                      <Text style={styles.lockName}>{lock.display_name}</Text>
-                    </TouchableOpacity>
-                  <Text style={styles.lockManufacturer}>{lock}</Text>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.addLockButton,
-                  linkedLockIds.has(device.device_id) && styles.addLockButtonActive,
-                ]}
-                onPress={() => handleToggleLinkLock(device.device_id)}
-              >
-                {linkedLockIds.has(device.device_id) ? (
-                  <Check size={20} color={colors.primary} />
-                ) : (
-                  <Text style={styles.addLockButtonText}>+</Text>
-                )}
-              </TouchableOpacity>
+              ))}
             </View>
-
-          ))}
+          ) : (
+            <View style={styles.emptyLocksState}>
+              <View style={styles.emptyLocksBrandSection}>
+                <Body weight="bolder">Smart Lock Brand</Body>
+                <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
+                  <Body variant="primary">+ Add Brand</Body>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </ScrollView>
       )}
       {activeChip === 'request' && (
         <Body>Requests</Body>
@@ -201,5 +227,58 @@ const styles = StyleSheet.create({
   textBlock: {
     flex: 1,
     paddingRight: 10,
+  },
+  locksContainer: {
+    paddingVertical: 8,
+  },
+  lockBrandCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginBottom: 16,
+  },
+  lockBrandHeader: {
+    marginBottom: 12,
+  },
+  lockItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  lockItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  lockItemIcon: {
+    width: 40,
+    height: 40,
+  },
+  lockItemInfo: {
+    flex: 1,
+  },
+  lockItemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyLocksContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyLocksState: {
+    paddingVertical: 8,
+  },
+  emptyLocksBrandSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
   },
 });

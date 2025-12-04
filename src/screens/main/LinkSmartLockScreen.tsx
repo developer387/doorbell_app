@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, Alert, ScrollView, Modal } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type MainStackParamList } from '@navigation-types';
-import { ArrowLeft, Search, ChevronRight, X, Check } from 'lucide-react-native';
+import { ArrowLeft, Search, ChevronRight, X, Check, Plus, Link2Off } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { BottomSheet } from '@/components/BottomSheet';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
@@ -36,9 +36,8 @@ export const LinkSmartLockScreen = () => {
   const [groupedDevices, setGroupedDevices] = useState<Record<string, SeamDevice[]>>({});
   const [brandImages, setBrandImages] = useState<Record<string, string>>({});
   const [linkedLockIds, setLinkedLockIds] = useState<Set<string>>(new Set());
-  const [editingLockId, setEditingLockId] = useState<string | null>(null);
-  const [editingLockName, setEditingLockName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [removeBrandModal, setRemoveBrandModal] = useState<string | null>(null);
 
   useEffect(() => {
     fetchExistingDevices();
@@ -241,62 +240,40 @@ export const LinkSmartLockScreen = () => {
   };
 
   const handleRemoveBrand = (manufacturer: string) => {
-    Alert.alert(
-      'Remove Brand',
-      `Are you sure you want to remove all ${manufacturer} devices?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            // Remove all devices from this manufacturer
-            const devicesToRemove = groupedDevices[manufacturer] || [];
-            const deviceIdsToRemove = new Set(devicesToRemove.map(d => d.device_id));
-
-            // Remove from grouped devices
-            const newGroupedDevices = { ...groupedDevices };
-            delete newGroupedDevices[manufacturer];
-            setGroupedDevices(newGroupedDevices);
-
-            // Remove from locks
-            setLocks(prevLocks => prevLocks.filter(lock => !deviceIdsToRemove.has(lock.device_id)));
-
-            // Remove from linked locks
-            setLinkedLockIds(prev => {
-              const newSet = new Set(prev);
-              deviceIdsToRemove.forEach(id => newSet.delete(id));
-              return newSet;
-            });
-          },
-        },
-      ]
-    );
+    setRemoveBrandModal(manufacturer);
   };
 
-  const handleStartEditLock = (lock: Lock) => {
-    setEditingLockId(lock.device_id);
-    setEditingLockName(lock.display_name);
-  };
+  const confirmRemoveBrand = () => {
+    if (!removeBrandModal) return;
 
-  const handleSaveEditLock = () => {
-    if (!editingLockId) return;
+    const manufacturer = removeBrandModal;
 
-    setLocks((prevLocks) =>
-      prevLocks.map((lock) =>
-        lock.device_id === editingLockId
-          ? { ...lock, display_name: editingLockName }
-          : lock
-      )
-    );
+    // Remove all devices from this manufacturer
+    const devicesToRemove = groupedDevices[manufacturer] || [];
+    const deviceIdsToRemove = new Set(devicesToRemove.map(d => d.device_id));
 
-    setEditingLockId(null);
-    setEditingLockName('');
+    // Remove from grouped devices
+    const newGroupedDevices = { ...groupedDevices };
+    delete newGroupedDevices[manufacturer];
+    setGroupedDevices(newGroupedDevices);
+
+    // Remove from locks
+    setLocks(prevLocks => prevLocks.filter(lock => !deviceIdsToRemove.has(lock.device_id)));
+
+    // Remove from linked locks
+    setLinkedLockIds(prev => {
+      const newSet = new Set(prev);
+      deviceIdsToRemove.forEach(id => newSet.delete(id));
+      return newSet;
+    });
+
+    setRemoveBrandModal(null);
   };
 
   const handleProceed = async () => {
     if (linkedLockIds.size === 0) {
-      Alert.alert('No Locks Selected', 'Please link at least one lock or skip this step.');
+      // Allow proceeding without linking locks
+      navigation.navigate('MainTabs');
       return;
     }
 
@@ -336,9 +313,7 @@ export const LinkSmartLockScreen = () => {
       });
 
       console.log('Successfully saved locks to property:', propertyId);
-      Alert.alert('Success', 'Smart locks have been linked to your property!', [
-        { text: 'OK', onPress: () => navigation.navigate('MainTabs') },
-      ]);
+      navigation.navigate('MainTabs');
     } catch (error) {
       console.error('Error saving locks:', error);
       Alert.alert('Error', 'Failed to save locks. Please try again.');
@@ -410,31 +385,18 @@ export const LinkSmartLockScreen = () => {
           </View>
         )}
 
-        {Object.keys(groupedDevices).length === 0 && !isLoading && (
-          <View style={styles.emptyStateContainer}>
-            <Image
-              source={require('../../../assets/empty.png')}
-              style={{ width: 139, height: 112, marginBottom: 16 }}
-            />
-            <Text style={styles.emptyStateText}>No Brand has been added yet.</Text>
-            <Text style={styles.emptyStateSubtext}>Click the button below to add a Brand</Text>
-
-            <TouchableOpacity style={styles.addBrandButton} onPress={handleAddBrand}>
-              <Text style={styles.addBrandButtonText}>Add Brand +</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
+        {/* Brand Groups */}
         {Object.keys(groupedDevices).length > 0 && (
           <View style={styles.brandsListContainer}>
             {Object.entries(groupedDevices).map(([manufacturer, devices]) => (
-              <View key={manufacturer} style={styles.brandGroupContainer}>
-                <View style={styles.brandGroupHeader}>
-                  <View style={styles.brandHeaderLeft}>
+              <View key={manufacturer} style={styles.brandCard}>
+                {/* Brand Header */}
+                <View style={styles.brandHeader}>
+                  <View style={styles.brandTitleRow}>
                     {brandImages[manufacturer] ? (
                       <Image
                         source={{ uri: brandImages[manufacturer] }}
-                        style={styles.brandLogo}
+                        style={styles.brandIcon}
                         resizeMode="contain"
                       />
                     ) : (
@@ -444,56 +406,57 @@ export const LinkSmartLockScreen = () => {
                         </Text>
                       </View>
                     )}
-                    <Text style={styles.brandGroupName}>{manufacturer}</Text>
+                    <Text style={styles.brandName}>{manufacturer}</Text>
                   </View>
                   <TouchableOpacity onPress={() => handleRemoveBrand(manufacturer)}>
                     <Text style={styles.removeText}>Remove</Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.selectLocksText}>
+                {/* Locks Selection Text */}
+                <Text style={styles.selectText}>
                   Select the Smart Lock(s) you want to connect
                 </Text>
 
+                {/* Locks List */}
                 {devices.map((device) => {
                   const lock = locks.find(l => l.device_id === device.device_id);
                   if (!lock) return null;
 
+                  const isLinked = linkedLockIds.has(device.device_id);
+
                   return (
-                    <View key={device.device_id} style={styles.lockItem}>
-                      <View style={styles.lockInfo}>
-                        <View style={styles.lockIconContainer}>
-                          <Text style={styles.lockIconText}>🔒</Text>
-                        </View>
-                        <View style={styles.lockDetails}>
-                          {editingLockId === device.device_id ? (
-                            <TextInput
-                              style={styles.lockNameInput}
-                              value={editingLockName}
-                              onChangeText={setEditingLockName}
-                              onBlur={handleSaveEditLock}
-                              autoFocus
-                            />
-                          ) : (
-                            <TouchableOpacity onPress={() => handleStartEditLock(lock)}>
-                              <Text style={styles.lockName}>{lock.display_name}</Text>
-                            </TouchableOpacity>
-                          )}
-                          <Text style={styles.lockManufacturer}>{manufacturer}</Text>
+                    <View key={device.device_id} style={styles.lockRow}>
+                      <View style={styles.lockLeft}>
+                        <Image
+                          source={require('../../../assets/remote.png')}
+                          style={styles.lockIcon}
+                          resizeMode="contain"
+                        />
+                        <View style={styles.lockInfo}>
+                          <View style={styles.lockNameRow}>
+                            <Text style={styles.lockName}>
+                              {lock.display_name}
+                            </Text>
+                            {isLinked && (
+                              <Check size={16} color={colors.primary} strokeWidth={3} />
+                            )}
+                          </View>
+                          <Text style={styles.lockSubtext}>{manufacturer}</Text>
                         </View>
                       </View>
 
                       <TouchableOpacity
                         style={[
-                          styles.addLockButton,
-                          linkedLockIds.has(device.device_id) && styles.addLockButtonActive,
+                          styles.actionButton,
+                          isLinked && styles.unlinkButton,
                         ]}
                         onPress={() => handleToggleLinkLock(device.device_id)}
                       >
-                        {linkedLockIds.has(device.device_id) ? (
-                          <Check size={20} color={colors.primary} />
+                        {isLinked ? (
+                          <Link2Off size={20} color="#EF4444" strokeWidth={2.5} />
                         ) : (
-                          <Text style={styles.addLockButtonText}>+</Text>
+                          <Plus size={20} color={colors.dark} strokeWidth={2.5} />
                         )}
                       </TouchableOpacity>
                     </View>
@@ -505,6 +468,7 @@ export const LinkSmartLockScreen = () => {
         )}
       </ScrollView>
 
+      {/* Proceed Button */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={[
@@ -523,12 +487,13 @@ export const LinkSmartLockScreen = () => {
                 linkedLockIds.size > 0 && styles.proceedButtonTextActive,
               ]}
             >
-              {linkedLockIds.size > 0 ? `Link ${linkedLockIds.size} Lock(s)` : 'Proceed'}
+              Proceed
             </Text>
           )}
         </TouchableOpacity>
       </View>
 
+      {/* Bottom Sheet for Brand Selection */}
       <BottomSheet
         isVisible={isBottomSheetVisible}
         onClose={() => setIsBottomSheetVisible(false)}
@@ -587,7 +552,7 @@ export const LinkSmartLockScreen = () => {
                         </Text>
                       </View>
                     )}
-                    <Body style={styles.brandName} tail>{brand.display_name}</Body>
+                    <Body style={styles.brandListName}>{brand.display_name}</Body>
                   </View>
                   <ChevronRight size={20} color="#94a3b8" />
                 </TouchableOpacity>
@@ -599,10 +564,40 @@ export const LinkSmartLockScreen = () => {
           )}
         </View>
       </BottomSheet>
+
+      {/* Remove Brand Confirmation Modal */}
+      <Modal
+        visible={removeBrandModal !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setRemoveBrandModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Oops!</Text>
+            <Text style={styles.modalMessage}>
+              Are you sure you want to remove this brand?
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setRemoveBrandModal(null)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalRemoveButton}
+                onPress={confirmRemoveBrand}
+              >
+                <Text style={styles.modalRemoveText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: {
@@ -613,9 +608,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 16,
   },
   backButton: {
     padding: 4,
@@ -623,7 +618,7 @@ const styles = StyleSheet.create({
   skipText: {
     color: colors.primary,
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '400',
   },
   webviewTitle: {
     fontSize: 18,
@@ -635,85 +630,46 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
     color: colors.dark,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#64748b',
-    marginBottom: 32,
+    fontSize: 14,
+    color: '#94A3B8',
+    marginBottom: 24,
   },
   brandSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.dark,
   },
   addBrandText: {
     color: colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptyStateContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  emptyStateSubtext: {
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  addBrandButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  addBrandButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  proceedButton: {
-    backgroundColor: colors.background,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  proceedButtonText: {
-    color: '#94a3b8',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '400',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 12,
+    textAlign: 'center',
   },
   errorContainer: {
     padding: 16,
@@ -726,6 +682,130 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+  brandsListContainer: {
+    marginBottom: 20,
+  },
+  brandCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginBottom: 16,
+  },
+  brandHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  brandTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  brandIcon: {
+    width: 24,
+    height: 24,
+  },
+  brandIconPlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  brandIconText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  brandName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.dark,
+  },
+  removeText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#EF4444',
+  },
+  selectText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 16,
+  },
+  lockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  lockLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  lockIcon: {
+    width: 40,
+    height: 40,
+  },
+  lockInfo: {
+    flex: 1,
+  },
+  lockNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  lockName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.dark,
+  },
+  lockSubtext: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.dark,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unlinkButton: {
+    borderColor: '#EF4444',
+  },
+  footer: {
+    padding: 16,
+    paddingBottom: 32,
+    backgroundColor: colors.white,
+  },
+  proceedButton: {
+    backgroundColor: '#D1D5DB',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  proceedButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  proceedButtonText: {
+    color: '#9CA3AF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  proceedButtonTextActive: {
+    color: colors.white,
+  },
+  // Bottom Sheet Styles
   bottomSheetContent: {
     paddingBottom: 20,
   },
@@ -792,25 +872,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  brandIconPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   brandLogo: {
     width: 40,
     height: 40,
     borderRadius: 8,
   },
-  brandIconText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  brandName: {
+  brandListName: {
     fontSize: 16,
     fontWeight: '500',
     color: colors.dark,
@@ -821,149 +888,62 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 20,
   },
-  loadingText: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: 12,
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 24,
+    width: '80%',
+    maxWidth: 320,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.dark,
+    marginBottom: 12,
     textAlign: 'center',
   },
-  lockItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 12,
+  modalMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
   },
-  lockInfo: {
+  modalButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
     gap: 12,
   },
-  lockIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f0fdf4',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  lockIconText: {
-    fontSize: 24,
-  },
-  lockDetails: {
+  modalCancelButton: {
     flex: 1,
-  },
-  lockName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.dark,
-    marginBottom: 4,
-  },
-  lockNameInput: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.dark,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.primary,
-    paddingVertical: 2,
-    marginBottom: 4,
-  },
-  lockManufacturer: {
-    fontSize: 14,
-    color: '#64748b',
-  },
-  linkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: '#E2E8F0',
     backgroundColor: colors.white,
-  },
-  linkButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  linkButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  linkButtonTextActive: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  proceedButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  proceedButtonTextActive: {
-    color: colors.white,
-  },
-  brandsListContainer: {
-    marginTop: 20,
-  },
-  brandGroupContainer: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    marginBottom: 16,
-  },
-  brandGroupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  brandHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  brandGroupName: {
-    fontSize: 18,
+  modalCancelText: {
+    fontSize: 16,
     fontWeight: '600',
     color: colors.dark,
   },
-  removeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ef4444',
-  },
-  selectLocksText: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 16,
-  },
-  addLockButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    backgroundColor: colors.white,
-    justifyContent: 'center',
+  modalRemoveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
     alignItems: 'center',
   },
-  addLockButtonActive: {
-    backgroundColor: colors.white,
-    borderColor: colors.primary,
-  },
-  addLockButtonText: {
-    fontSize: 20,
+  modalRemoveText: {
+    fontSize: 16,
     fontWeight: '600',
-    color: colors.primary,
+    color: colors.white,
   },
 });
-

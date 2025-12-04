@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     handle: {
         width: 40,
         height: 4,
-        backgroundColor: colors.gray300,
+        backgroundColor: '#D1D5DB',
         borderRadius: 2,
     },
     scrollView: {
