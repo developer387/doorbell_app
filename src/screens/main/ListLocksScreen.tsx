@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type MainStackParamList } from '@navigation-types';
 import { colors } from '@/styles/colors';
+import { Title, Body } from '@/typography';
 
 type RouteProps = RouteProp<MainStackParamList, 'ListLocks'>;
 
@@ -16,8 +17,8 @@ export const ListLocksScreen = () => {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.text}>List Locks Screen</Text>
-            <Text style={styles.detailText}>Device ID: {deviceId}</Text>
+            <Title weight="bolder" variant="black" align="center">List Locks Screen</Title>
+            <Body variant="black" align="center">Device ID: {deviceId}</Body>
         </View>
     );
 };

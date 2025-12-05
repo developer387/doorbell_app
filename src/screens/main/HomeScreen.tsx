@@ -1,17 +1,17 @@
 import React from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 
 import { Search, Bell, Plus } from 'lucide-react-native';
 import { useAuth } from '@/context/UserContext';
 import { colors } from '@/styles/colors';
-import { MediumText, Body } from '@/typography';
+import { MediumText, Body, Heading } from '@/typography';
 import { FilterChips } from '@components/FilterChip';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { useUserProperties } from '@/hooks/useUserProperties';
-import { ActivityIndicator } from 'react-native';
 import { Loading, PropertyCard } from '@/components';
+import type { ChipItem } from '@/components/ScrollableChipList';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
@@ -36,9 +36,9 @@ export const HomeScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.welcome}>
+          <Heading weight="bold" variant="black">
             Welcome, {user?.displayName?.split(' ')[0] ?? 'User'}
-          </Text>
+          </Heading>
           <TouchableOpacity style={styles.bell}>
             <Bell size={22} color="#0f172a" />
           </TouchableOpacity>
@@ -77,7 +77,7 @@ export const HomeScreen = () => {
               style={styles.addButton}
               onPress={() => navigation.navigate('AddProperty')}
             >
-              <Text style={styles.addButtonText}>Add Property +</Text>
+              <MediumText variant="white" weight="bold">Add Property +</MediumText>
             </TouchableOpacity>
           </View>
         )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, Alert, ScrollView, Modal } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, Alert, ScrollView, Modal } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type MainStackParamList } from '@navigation-types';
@@ -12,7 +12,7 @@ import { collection, query, where, getDocs, updateDoc } from 'firebase/firestore
 import { db } from '@/config/firebase';
 import { useAuth } from '@/context/UserContext';
 import { type SeamDevice } from '@/types';
-import { Body } from '@/typography';
+import { Body, Heading, Title, MediumText, SmallText } from '@/typography';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 type RouteProps = RouteProp<MainStackParamList, 'LinkSmartLock'>;
@@ -329,7 +329,7 @@ export const LinkSmartLockScreen = () => {
           <TouchableOpacity onPress={handleCloseWebView} style={styles.backButton}>
             <ArrowLeft size={24} color={colors.dark} />
           </TouchableOpacity>
-          <Text style={styles.webviewTitle}>Connect Your Lock</Text>
+          <Heading weight="bold" variant="black">Connect Your Lock</Heading>
           <TouchableOpacity onPress={handleCloseWebView}>
             <X size={24} color={colors.dark} />
           </TouchableOpacity>
@@ -357,31 +357,31 @@ export const LinkSmartLockScreen = () => {
           <ArrowLeft size={24} color={colors.dark} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleSkip}>
-          <Text style={styles.skipText}>Skip</Text>
+          <Body variant="primary">Skip</Body>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Link Your Smart Lock</Text>
-        <Text style={styles.subtitle}>You can do it now or later</Text>
+        <Title weight="bolder" variant="black">Link Your Smart Lock</Title>
+        <MediumText variant="secondary">You can do it now or later</MediumText>
 
         <View style={styles.brandSection}>
-          <Text style={styles.sectionTitle}>Smart Lock Brand</Text>
+          <Body weight="bolder" variant="black">Smart Lock Brand</Body>
           <TouchableOpacity onPress={handleAddBrand}>
-            <Text style={styles.addBrandText}>+ Add Brand</Text>
+            <MediumText variant="primary">+ Add Brand</MediumText>
           </TouchableOpacity>
         </View>
 
         {isLoading && !isBottomSheetVisible && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading devices...</Text>
+            <MediumText variant="secondary">Loading devices...</MediumText>
           </View>
         )}
 
         {error && (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
+            <MediumText variant="error">{error}</MediumText>
           </View>
         )}
 
@@ -401,22 +401,22 @@ export const LinkSmartLockScreen = () => {
                       />
                     ) : (
                       <View style={styles.brandIconPlaceholder}>
-                        <Text style={styles.brandIconText}>
+                        <SmallText variant="white" weight="bold">
                           {manufacturer.charAt(0).toUpperCase()}
-                        </Text>
+                        </SmallText>
                       </View>
                     )}
-                    <Text style={styles.brandName}>{manufacturer}</Text>
+                    <Body weight="bolder" variant="black">{manufacturer}</Body>
                   </View>
                   <TouchableOpacity onPress={() => handleRemoveBrand(manufacturer)}>
-                    <Text style={styles.removeText}>Remove</Text>
+                    <MediumText variant="error">Remove</MediumText>
                   </TouchableOpacity>
                 </View>
 
                 {/* Locks Selection Text */}
-                <Text style={styles.selectText}>
+                <SmallText variant="secondary">
                   Select the Smart Lock(s) you want to connect
-                </Text>
+                </SmallText>
 
                 {/* Locks List */}
                 {devices.map((device) => {
@@ -435,14 +435,14 @@ export const LinkSmartLockScreen = () => {
                         />
                         <View style={styles.lockInfo}>
                           <View style={styles.lockNameRow}>
-                            <Text style={styles.lockName}>
+                            <Body weight="bolder" variant="black">
                               {lock.display_name}
-                            </Text>
+                            </Body>
                             {isLinked && (
                               <Check size={16} color={colors.primary} strokeWidth={3} />
                             )}
                           </View>
-                          <Text style={styles.lockSubtext}>{manufacturer}</Text>
+                          <SmallText variant="secondary">{manufacturer}</SmallText>
                         </View>
                       </View>
 
@@ -481,14 +481,12 @@ export const LinkSmartLockScreen = () => {
           {isSaving ? (
             <ActivityIndicator size="small" color={colors.white} />
           ) : (
-            <Text
-              style={[
-                styles.proceedButtonText,
-                linkedLockIds.size > 0 && styles.proceedButtonTextActive,
-              ]}
+            <Body
+              variant={linkedLockIds.size > 0 ? 'white' : 'secondary'}
+              weight="bold"
             >
               Proceed
-            </Text>
+            </Body>
           )}
         </TouchableOpacity>
       </View>
@@ -500,7 +498,7 @@ export const LinkSmartLockScreen = () => {
       >
         <View style={styles.bottomSheetContent}>
           <View style={styles.bottomSheetHeader}>
-            <Text style={styles.bottomSheetTitle}>Select a brand</Text>
+            <Heading weight="bolder" variant="black">Select a brand</Heading>
             <TouchableOpacity onPress={() => setIsBottomSheetVisible(false)}>
               <X size={24} color={colors.dark} />
             </TouchableOpacity>
@@ -518,8 +516,8 @@ export const LinkSmartLockScreen = () => {
           </View>
 
           <View style={styles.poweredBy}>
-            <Text style={styles.poweredByText}>Powered by</Text>
-            <Text style={styles.seamText}>seam</Text>
+            <SmallText variant="secondary">Powered by</SmallText>
+            <SmallText weight="bold" variant="black">seam</SmallText>
           </View>
 
           {isLoadingBrands ? (
@@ -528,7 +526,7 @@ export const LinkSmartLockScreen = () => {
             </View>
           ) : error ? (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
+              <MediumText variant="error">{error}</MediumText>
             </View>
           ) : (
             <ScrollView style={styles.brandList}>
@@ -547,9 +545,9 @@ export const LinkSmartLockScreen = () => {
                       />
                     ) : (
                       <View style={styles.brandIconPlaceholder}>
-                        <Text style={styles.brandIconText}>
+                        <SmallText variant="white" weight="bold">
                           {brand.display_name.charAt(0).toUpperCase()}
-                        </Text>
+                        </SmallText>
                       </View>
                     )}
                     <Body style={styles.brandListName}>{brand.display_name}</Body>
@@ -558,7 +556,7 @@ export const LinkSmartLockScreen = () => {
                 </TouchableOpacity>
               ))}
               {filteredBrands.length === 0 && !isLoadingBrands && (
-                <Text style={styles.noBrandsText}>No brands found</Text>
+                <Body variant="secondary" align="center">No brands found</Body>
               )}
             </ScrollView>
           )}
@@ -574,22 +572,22 @@ export const LinkSmartLockScreen = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Oops!</Text>
-            <Text style={styles.modalMessage}>
+            <Title weight="bolder" variant="black" align="center">Oops!</Title>
+            <MediumText variant="secondary" align="center">
               Are you sure you want to remove this brand?
-            </Text>
+            </MediumText>
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.modalCancelButton}
                 onPress={() => setRemoveBrandModal(null)}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Body weight="bold" variant="black">Cancel</Body>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalRemoveButton}
                 onPress={confirmRemoveBrand}
               >
-                <Text style={styles.modalRemoveText}>Remove</Text>
+                <Body weight="bold" variant="white">Remove</Body>
               </TouchableOpacity>
             </View>
           </View>

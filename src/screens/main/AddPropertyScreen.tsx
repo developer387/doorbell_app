@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   TextInput,
@@ -14,6 +13,7 @@ import * as Location from 'expo-location';
 import MapView, { Marker } from 'react-native-maps';
 import { ArrowLeft, MapPin, QrCode } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
+import { Heading, Body, MediumText, Title } from '@/typography';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
@@ -185,10 +185,10 @@ export const AddPropertyScreen = () => {
   if (hasPermission === false) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.noPermissionText}>No access to camera</Text>
-        <Text style={styles.noPermissionSubtext}>
+        <Heading weight="bold" variant="black" align="center">No access to camera</Heading>
+        <Body variant="secondary" align="center">
           Please enable camera permissions in your device settings
-        </Text>
+        </Body>
       </View>
     );
   }
@@ -200,7 +200,7 @@ export const AddPropertyScreen = () => {
           <TouchableOpacity onPress={() => setCameraActive(false)} style={styles.closeButton}>
             <ArrowLeft size={24} color={colors.dark} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Scan QR Code</Text>
+          <Heading weight="bold" variant="black">Scan QR Code</Heading>
           <View style={{ width: 24 }} />
         </View>
 
@@ -219,10 +219,10 @@ export const AddPropertyScreen = () => {
         </View>
 
         <View style={styles.instructionContainer}>
-          <Text style={styles.instructionTitle}>Position the QR code in the frame</Text>
-          <Text style={styles.instructionText}>
+          <Body weight="bold" variant="black" align="center">Position the QR code in the frame</Body>
+          <MediumText variant="secondary" align="center">
             Align the QR code within the frame to scan automatically
-          </Text>
+          </MediumText>
         </View>
 
         {scanned && (
@@ -234,7 +234,7 @@ export const AddPropertyScreen = () => {
               setShowForm(false);
             }}
           >
-            <Text style={styles.rescanButtonText}>Tap to Scan Again</Text>
+            <Body variant="white" weight="bold">Tap to Scan Again</Body>
           </TouchableOpacity>
         )}
       </View>
@@ -248,12 +248,12 @@ export const AddPropertyScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
             <ArrowLeft size={24} color={colors.dark} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add Property</Text>
+          <Heading weight="bold" variant="black">Add Property</Heading>
           <View style={{ width: 24 }} />
         </View>
 
         <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
-          <Text style={styles.subtitle}>Enter your property details</Text>
+          <MediumText variant="secondary">Enter your property details</MediumText>
 
           <View style={styles.inputGroup}>
             <Dropdown
@@ -266,7 +266,7 @@ export const AddPropertyScreen = () => {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Property name</Text>
+            <MediumText weight="normal" variant="black">Property name</MediumText>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
@@ -279,7 +279,7 @@ export const AddPropertyScreen = () => {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Address</Text>
+            <MediumText weight="normal" variant="black">Address</MediumText>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
@@ -296,9 +296,9 @@ export const AddPropertyScreen = () => {
               disabled={loadingLocation}
             >
               <MapPin size={16} color={colors.primary} />
-              <Text style={styles.locationButtonText}>
+              <MediumText variant="primary">
                 {loadingLocation ? 'Getting location...' : 'Use Current Location'}
-              </Text>
+              </MediumText>
             </TouchableOpacity>
           </View>
 
@@ -332,7 +332,7 @@ export const AddPropertyScreen = () => {
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.white} />
             ) : (
-              <Text style={styles.submitButtonText}>Proceed</Text>
+              <Body variant="white" weight="bold">Proceed</Body>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -346,7 +346,7 @@ export const AddPropertyScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
           <ArrowLeft size={24} color={colors.dark} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Property</Text>
+        <Heading weight="bold" variant="black">Add Property</Heading>
         <View style={{ width: 24 }} />
       </View>
 
@@ -355,14 +355,14 @@ export const AddPropertyScreen = () => {
           <QrCode size={80} color={colors.primary} strokeWidth={1.5} />
         </View>
 
-        <Text style={styles.startScanTitle}>Scan Property QR Code</Text>
-        <Text style={styles.startScanText}>
+        <Title weight="bold" variant="black" align="center">Scan Property QR Code</Title>
+        <Body variant="secondary" align="center">
           To add a new property, you need to scan the QR code provided with your doorbell device.
-        </Text>
+        </Body>
 
         <TouchableOpacity style={styles.startScanButton} onPress={handleStartScanning}>
           <QrCode size={20} color={colors.white} />
-          <Text style={styles.startScanButtonText}>Start Scanning</Text>
+          <Body variant="white" weight="bold">Start Scanning</Body>
         </TouchableOpacity>
       </View>
     </View>

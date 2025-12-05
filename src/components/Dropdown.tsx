@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
     View,
-    Text,
     TouchableOpacity,
     Modal,
     StyleSheet,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
+import { MediumText, Body, Heading } from '@/typography';
 
 interface DropdownProps {
     label?: string;
@@ -35,14 +35,14 @@ export const Dropdown: React.FC<DropdownProps> = ({
 
     return (
         <View>
-            {label && <Text style={styles.label}>{label}</Text>}
+            {label && <MediumText weight="normal" variant="black">{label}</MediumText>}
             <TouchableOpacity
                 style={styles.dropdownButton}
                 onPress={() => setModalVisible(true)}
             >
-                <Text style={value ? styles.selectedText : styles.placeholderText}>
+                <Body variant={value ? 'black' : 'secondary'}>
                     {value || placeholder}
-                </Text>
+                </Body>
                 <ChevronDown size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
@@ -57,7 +57,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
                     onPress={() => setModalVisible(false)}
                 >
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Select {label || 'Option'}</Text>
+                        <Heading weight="bold" variant="black">Select {label || 'Option'}</Heading>
                         <FlatList
                             data={options}
                             keyExtractor={(item) => item}
@@ -69,14 +69,12 @@ export const Dropdown: React.FC<DropdownProps> = ({
                                     ]}
                                     onPress={() => handleSelect(item)}
                                 >
-                                    <Text
-                                        style={[
-                                            styles.optionText,
-                                            value === item && styles.selectedOptionText,
-                                        ]}
+                                    <Body
+                                        variant={value === item ? 'white' : 'black'}
+                                        weight={value === item ? 'bold' : 'normal'}
                                     >
                                         {item}
-                                    </Text>
+                                    </Body>
                                 </TouchableOpacity>
                             )}
                         />
@@ -84,7 +82,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
                             style={styles.closeButton}
                             onPress={() => setModalVisible(false)}
                         >
-                            <Text style={styles.closeButtonText}>Cancel</Text>
+                            <Body variant="secondary">Cancel</Body>
                         </TouchableOpacity>
                     </View>
                 </Pressable>

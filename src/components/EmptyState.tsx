@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { colors } from '../styles/colors';
 import { Button } from './Button';
 import { Image as LucideImage, Plus } from 'lucide-react-native';
+import { Body } from '@/typography';
 
 interface EmptyStateProps {
     onAddProperty: () => void;
@@ -18,9 +19,9 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onAddProperty }) => {
                 </View>
             </View>
 
-            <Text style={styles.text}>
+            <Body variant="secondary" align="center">
                 No property has not been added yet.{'\n'}Click the button below to add a{'\n'}property
-            </Text>
+            </Body>
 
             <Button
                 title="Add Property"

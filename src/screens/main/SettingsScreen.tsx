@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, Switch, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
+import { Heading, Body, MediumText } from '@/typography';
 
 export const SettingsScreen: React.FC = () => {
     const [pushEnabled, setPushEnabled] = useState(true);
@@ -10,7 +11,7 @@ export const SettingsScreen: React.FC = () => {
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Notifications</Text>
+                <Heading weight="bold" variant="black">Notifications</Heading>
 
                 <View style={styles.settingsCard}>
                     <SettingRow
@@ -29,7 +30,7 @@ export const SettingsScreen: React.FC = () => {
             </View>
 
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Appearance</Text>
+                <Heading weight="bold" variant="black">Appearance</Heading>
 
                 <View style={styles.settingsCard}>
                     <SettingRow
@@ -42,28 +43,28 @@ export const SettingsScreen: React.FC = () => {
             </View>
 
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>About</Text>
+                <Heading weight="bold" variant="black">About</Heading>
 
                 <View style={styles.settingsCard}>
                     <TouchableOpacity style={styles.settingItem}>
                         <View style={styles.settingContent}>
-                            <Text style={styles.settingLabel}>Version</Text>
+                            <Body weight="bold" variant="black">Version</Body>
                         </View>
-                        <Text style={styles.settingValue}>1.0.0</Text>
+                        <MediumText variant="secondary">1.0.0</MediumText>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.settingItem}>
                         <View style={styles.settingContent}>
-                            <Text style={styles.settingLabel}>Terms of Service</Text>
+                            <Body weight="bold" variant="black">Terms of Service</Body>
                         </View>
-                        <Text style={styles.settingArrow}>›</Text>
+                        <Heading variant="secondary" weight="light">›</Heading>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.settingItem}>
                         <View style={styles.settingContent}>
-                            <Text style={styles.settingLabel}>Privacy Policy</Text>
+                            <Body weight="bold" variant="black">Privacy Policy</Body>
                         </View>
-                        <Text style={styles.settingArrow}>›</Text>
+                        <Heading variant="secondary" weight="light">›</Heading>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -81,8 +82,8 @@ interface SettingRowProps {
 const SettingRow: React.FC<SettingRowProps> = ({ label, description, value, onValueChange }) => (
     <View style={styles.settingItem}>
         <View style={styles.settingContent}>
-            <Text style={styles.settingLabel}>{label}</Text>
-            <Text style={styles.settingDescription}>{description}</Text>
+            <Body weight="bold" variant="black">{label}</Body>
+            <MediumText variant="secondary">{description}</MediumText>
         </View>
         <Switch
             value={value}

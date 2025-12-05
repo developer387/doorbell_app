@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '@constants/theme';
 import { useAuth } from '@/context/UserContext';
+import { Heading, Body, MediumText } from '@/typography';
 
 export const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
@@ -60,14 +60,14 @@ export const ProfileScreen: React.FC = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>{getInitials()}</Text>
+          <Heading weight="bolder" variant="white">{getInitials()}</Heading>
         </View>
-        <Text style={styles.name}>{user?.displayName || user?.email || 'User'}</Text>
-        <Text style={styles.email}>{user?.email || 'No email'}</Text>
+        <Heading weight="bolder" variant="black">{user?.displayName || user?.email || 'User'}</Heading>
+        <Body variant="secondary">{user?.email || 'No email'}</Body>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account Information</Text>
+        <Heading weight="bold" variant="black">Account Information</Heading>
 
         <View style={styles.infoCard}>
           <InfoRow label="Email" value={user?.email ?? 'Not available'} />
@@ -85,10 +85,10 @@ export const ProfileScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Actions</Text>
+        <Heading weight="bold" variant="black">Actions</Heading>
 
         <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>Edit Profile</Text>
+          <MediumText variant="white" weight="bold">Edit Profile</MediumText>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -99,7 +99,7 @@ export const ProfileScreen: React.FC = () => {
           {isLoggingOut ? (
             <ActivityIndicator color={COLORS.danger} />
           ) : (
-            <Text style={[styles.actionButtonText, styles.dangerButtonText]}>Sign Out</Text>
+            <MediumText variant="error" weight="bold">Sign Out</MediumText>
           )}
         </TouchableOpacity>
       </View>
@@ -114,8 +114,8 @@ interface InfoRowProps {
 
 const InfoRow: React.FC<InfoRowProps> = ({ label, value }) => (
   <View style={styles.infoRow}>
-    <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={styles.infoValue}>{value}</Text>
+    <Body variant="secondary">{label}</Body>
+    <Body weight="bold" variant="black">{value}</Body>
   </View>
 );
 

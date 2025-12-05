@@ -170,6 +170,83 @@ class SeamService {
       throw error;
     }
   }
+
+  async unlockDoor(deviceId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Seam client not initialized.');
+    }
+
+    try {
+      await this.client.locks.unlockDoor({ device_id: deviceId });
+      console.log('Door unlocked successfully:', deviceId);
+    } catch (error) {
+      console.error('Error unlocking door:', error);
+      throw error;
+    }
+  }
+
+  async lockDoor(deviceId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Seam client not initialized.');
+    }
+
+    try {
+      await this.client.locks.lockDoor({ device_id: deviceId });
+      console.log('Door locked successfully:', deviceId);
+    } catch (error) {
+      console.error('Error locking door:', error);
+      throw error;
+    }
+  }
+
+  async createAccessCode(
+    deviceId: string,
+    duration: number,
+    unit: 'minutes' | 'hours'
+  ): Promise<{ code: string; expiresAt: number }> {
+    if (!this.client) {
+      throw new Error('Seam client not initialized.');
+    }
+
+    try {
+      const now = new Date();
+      const startsAt = now.toISOString();
+      const endsAt = new Date(
+        now.getTime() + duration * (unit === 'hours' ? 60 * 60 * 1000 : 60 * 1000)
+      ).toISOString();
+
+      const accessCode = await this.client.accessCodes.create({
+        device_id: deviceId,
+        name: `Temporary Access - ${now.toLocaleString()}`,
+        starts_at: startsAt,
+        ends_at: endsAt,
+      });
+
+      console.log('Access code created:', accessCode);
+
+      return {
+        code: accessCode.code || '',
+        expiresAt: new Date(endsAt).getTime(),
+      };
+    } catch (error) {
+      console.error('Error creating access code:', error);
+      throw error;
+    }
+  }
+
+  async deleteAccessCode(accessCodeId: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Seam client not initialized.');
+    }
+
+    try {
+      await this.client.accessCodes.delete({ access_code_id: accessCodeId });
+      console.log('Access code deleted:', accessCodeId);
+    } catch (error) {
+      console.error('Error deleting access code:', error);
+      throw error;
+    }
+  }
 }
 
 export const seamService = new SeamService();

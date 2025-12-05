@@ -3,12 +3,14 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '@/navigation-types';
-import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Image } from 'react-native';
-import { ArrowLeft, Check } from 'lucide-react-native';
+import { StyleSheet, View, TouchableOpacity, Switch, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ArrowLeft } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { useAuth } from '@/context/UserContext';
 import { Title, Body, SmallText } from '@/typography';
 import { type ChipItem, FilterChips, Loading } from '@/components';
+import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
 import { useGetUserProperty } from '@/hooks';
 
 type PropertyDetailsRouteProp = RouteProp<MainStackParamList, 'PropertyDetails'>;
@@ -36,6 +38,98 @@ export const PropertyDetails = () => {
   const { propertyId } = route.params;
 
   const { property, loading } = useGetUserProperty(user?.uid, propertyId);
+
+  // Lock states management
+  const [lockStates, setLockStates] = useState<LockState[]>([]);
+
+  // Initialize lock states when property loads
+  React.useEffect(() => {
+    if (property?.smartLocks) {
+      // Try to load persisted state first
+      loadPersistedLockStates();
+    }
+  }, [property?.smartLocks]);
+
+  // Load persisted lock states from AsyncStorage
+  const loadPersistedLockStates = async (): Promise<void> => {
+    try {
+      const stored = await AsyncStorage.getItem(`lock_states_${propertyId}`);
+      if (stored && property?.smartLocks) {
+        const persistedStates: LockState[] = JSON.parse(stored);
+
+        // Merge with current property locks, reconcile with Seam state
+        const mergedStates = property.smartLocks.map((lock) => {
+          const persisted = persistedStates.find((ps) => ps.device_id === lock.device_id);
+
+          // Check if temporary unlock has expired
+          if (persisted?.temporaryUnlock?.active) {
+            const now = Date.now();
+            if (persisted.temporaryUnlock.expiresAt <= now) {
+              // Expired, clear it
+              return {
+                device_id: lock.device_id,
+                display_name: lock.display_name,
+                manufacturer: lock.manufacturer,
+                isLocked: true,
+              };
+            }
+            // Still valid, keep it
+            return persisted;
+          }
+
+          return persisted || {
+            device_id: lock.device_id,
+            display_name: lock.display_name,
+            manufacturer: lock.manufacturer,
+            isLocked: true,
+          };
+        });
+
+        setLockStates(mergedStates);
+      } else if (property?.smartLocks) {
+        // No persisted state, initialize fresh
+        const initialStates = property.smartLocks.map((lock) => ({
+          device_id: lock.device_id,
+          display_name: lock.display_name,
+          manufacturer: lock.manufacturer,
+          isLocked: true,
+        }));
+        setLockStates(initialStates);
+      }
+    } catch (error) {
+      console.error('Error loading persisted lock states:', error);
+      // Fallback to fresh initialization
+      if (property?.smartLocks) {
+        const initialStates = property.smartLocks.map((lock) => ({
+          device_id: lock.device_id,
+          display_name: lock.display_name,
+          manufacturer: lock.manufacturer,
+          isLocked: true,
+        }));
+        setLockStates(initialStates);
+      }
+    }
+  };
+
+  // Persist lock states to AsyncStorage
+  const persistLockStates = async (states: LockState[]): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(`lock_states_${propertyId}`, JSON.stringify(states));
+    } catch (error) {
+      console.error('Error persisting lock states:', error);
+    }
+  };
+
+  // Handle lock state changes
+  const handleLockStateChange = (deviceId: string, newState: Partial<LockState>): void => {
+    setLockStates((prev) => {
+      const updated = prev.map((lock) =>
+        lock.device_id === deviceId ? { ...lock, ...newState } : lock
+      );
+      persistLockStates(updated);
+      return updated;
+    });
+  };
 
 
   const chips: ChipItem[] = [
@@ -103,59 +197,64 @@ export const PropertyDetails = () => {
 
       )}
       {activeChip === 'locks' && (
-        <ScrollView style={styles.contentScroll}>
-          {property?.smartLocks && property.smartLocks.length > 0 ? (
-            <View style={styles.locksContainer}>
-              {/* Group locks by manufacturer */}
-              {Object.entries(
-                property.smartLocks.reduce((acc, lock) => {
-                  const manufacturer = lock.manufacturer || 'Unknown';
-                  if (!acc[manufacturer]) {
-                    acc[manufacturer] = [];
-                  }
-                  acc[manufacturer].push(lock);
-                  return acc;
-                }, {} as Record<string, typeof property.smartLocks>)
-              ).map(([manufacturer, locks]) => (
-                <View key={manufacturer} style={styles.lockBrandCard}>
-                  {/* Brand Header */}
-                  <View style={styles.lockBrandHeader}>
-                    <Body weight="bolder">{manufacturer}</Body>
-                  </View>
-
-                  {/* Locks List */}
-                  {locks.map((lock) => (
-                    <View key={lock.device_id} style={styles.lockItemRow}>
-                      <View style={styles.lockItemLeft}>
-                        <Image
-                          source={require('../../../assets/remote.png')}
-                          style={styles.lockItemIcon}
-                          resizeMode="contain"
-                        />
-                        <View style={styles.lockItemInfo}>
-                          <View style={styles.lockItemNameRow}>
-                            <Body weight="bolder">{lock.display_name}</Body>
-                            <Check size={16} color={colors.primary} strokeWidth={3} />
-                          </View>
-                          <SmallText variant="secondary">{manufacturer}</SmallText>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
+        <>
+          <ScrollView style={styles.contentScroll}>
+            {property?.smartLocks && property.smartLocks.length > 0 ? (
+              <View style={styles.locksContainer}>
+                {/* Section Header */}
+                <View style={styles.smartLocksHeader}>
+                  <Body weight="bolder">My Smart Locks</Body>
+                  <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
+                    <Body variant="primary">+ Add Smart Lock</Body>
+                  </TouchableOpacity>
                 </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyLocksState}>
-              <View style={styles.emptyLocksBrandSection}>
-                <Body weight="bolder">Smart Lock Brand</Body>
-                <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
-                  <Body variant="primary">+ Add Brand</Body>
-                </TouchableOpacity>
+
+                {/* Group locks by manufacturer and render SmartLockItem */}
+                {Object.entries(
+                  property.smartLocks.reduce((acc, lock) => {
+                    const manufacturer = lock.manufacturer || 'Unknown';
+                    if (!acc[manufacturer]) {
+                      acc[manufacturer] = [];
+                    }
+                    acc[manufacturer].push(lock);
+                    return acc;
+                  }, {} as Record<string, typeof property.smartLocks>)
+                ).map(([manufacturer, locks]) => (
+                  <View key={manufacturer}>
+                    {locks.map((lock) => {
+                      // Find the lock state
+                      const lockState = lockStates.find(
+                        (ls) => ls.device_id === lock.device_id
+                      ) || {
+                        device_id: lock.device_id,
+                        display_name: lock.display_name,
+                        manufacturer: lock.manufacturer,
+                        isLocked: true,
+                      };
+
+                      return (
+                        <SmartLockItem
+                          key={lock.device_id}
+                          lock={lockState}
+                          onLockStateChange={handleLockStateChange}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
               </View>
-            </View>
-          )}
-        </ScrollView>
+            ) : (
+              <View style={styles.emptyLocksState}>
+                <View style={styles.emptyLocksBrandSection}>
+                  <Body weight="bolder">Smart Lock Brand</Body>
+                  <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
+                    <Body variant="primary">+ Add Brand</Body>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </>
       )}
       {activeChip === 'request' && (
         <Body>Requests</Body>
@@ -230,6 +329,13 @@ const styles = StyleSheet.create({
   },
   locksContainer: {
     paddingVertical: 8,
+  },
+  smartLocksHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginBottom: 8,
   },
   lockBrandCard: {
     backgroundColor: colors.white,
