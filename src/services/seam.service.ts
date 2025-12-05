@@ -1,7 +1,7 @@
 import { Seam } from 'seam';
-import { SeamDevice } from '@/types';
+import { type SeamDevice } from '@/types';
 
-const SEAM_API_KEY = process.env.EXPO_PUBLIC_SEAM_API_KEY || '';
+const SEAM_API_KEY = (process.env.EXPO_PUBLIC_SEAM_API_KEY as string) ?? '';
 
 export interface SeamBrand {
   key: string;
@@ -13,7 +13,7 @@ export interface SeamBrand {
 export interface ConnectWebview {
   connect_webview_id: string;
   url: string;
-  status: string;
+  status: 'pending' | 'authorized' | 'failed';
 }
 
 export interface ConnectedAccount {
@@ -42,11 +42,15 @@ export interface Lock {
   connected_account_id?: string;
 }
 
+export interface AccessCodeResponse {
+  code: string;
+  expiresAt: number;
+}
+
 class SeamService {
   private client: Seam | null = null;
 
   constructor() {
-    // Validate API key format
     if (!SEAM_API_KEY) {
       console.warn(
         'Seam API key is not set. Please add EXPO_PUBLIC_SEAM_API_KEY to your .env file'
@@ -66,26 +70,27 @@ class SeamService {
     }
   }
 
-  async getDeviceProviders(): Promise<SeamDevice[]> {
+  private getClient(): Seam {
     if (!this.client) {
-      throw new Error('Seam client not initialized');
+      throw new Error('Seam client not initialized. Please check your API key configuration.');
     }
+    return this.client;
+  }
 
-    const response = await this.client.devices.list();
-
-    return response as SeamDevice[];
+  async getDeviceProviders(): Promise<SeamDevice[]> {
+    const client = this.getClient();
+    const response = await client.devices.list();
+    return response as unknown as SeamDevice[];
   }
 
   async getBrandProviders(): Promise<SeamBrand[]> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized');
-    }
+    const client = this.getClient();
 
     try {
-      const providers = await this.client.devices.listDeviceProviders();
-      console.log('Fetched brand providers:', providers);
+      const providers = await client.devices.listDeviceProviders();
+      console.log('Fetched brand providers:', providers.length);
 
-      return providers.map((provider: any) => ({
+      return providers.map((provider) => ({
         key: provider.device_provider_name,
         name: provider.device_provider_name,
         display_name: provider.display_name || provider.device_provider_name,
@@ -98,22 +103,18 @@ class SeamService {
   }
 
   async createConnectWebview(providerKey?: string): Promise<ConnectWebview> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized. Please check your API key configuration.');
-    }
+    const client = this.getClient();
 
     try {
-      const params: any = {
-        accepted_providers: providerKey ? [providerKey] : undefined,
-      };
+      const params = providerKey ? { accepted_providers: [providerKey] as any[] } : {};
 
-      const webview = await this.client.connectWebviews.create(params);
-      console.log('Seam connect webview created:', webview);
+      const webview = await client.connectWebviews.create(params);
+      console.log('Seam connect webview created:', webview.connect_webview_id);
 
       return {
         connect_webview_id: webview.connect_webview_id,
         url: webview.url,
-        status: webview.status,
+        status: webview.status as ConnectWebview['status'],
       };
     } catch (error) {
       console.error('Error creating Seam connect webview:', error);
@@ -122,19 +123,17 @@ class SeamService {
   }
 
   async getConnectWebviewStatus(webviewId: string): Promise<ConnectWebview> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized.');
-    }
+    const client = this.getClient();
 
     try {
-      const webview = await this.client.connectWebviews.get({
+      const webview = await client.connectWebviews.get({
         connect_webview_id: webviewId,
       });
 
       return {
         connect_webview_id: webview.connect_webview_id,
         url: webview.url,
-        status: webview.status,
+        status: webview.status as ConnectWebview['status'],
       };
     } catch (error) {
       console.error('Error getting webview status:', error);
@@ -143,26 +142,24 @@ class SeamService {
   }
 
   async getDevices(connectedAccountId?: string): Promise<Lock[]> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized.');
-    }
+    const client = this.getClient();
 
     try {
-      const params: any = connectedAccountId
+      const params = connectedAccountId
         ? { connected_account_id: connectedAccountId }
         : {};
 
-      const devices = await this.client.devices.list(params);
-      console.log('Fetched devices:', devices);
+      const devices = await client.devices.list(params);
+      console.log('Fetched devices:', devices.length);
 
       return devices
-        .filter((device: any) => device.device_type?.includes('lock'))
-        .map((device: any) => ({
+        .filter((device) => device.device_type?.includes('lock'))
+        .map((device) => ({
           device_id: device.device_id,
           device_type: device.device_type,
           display_name: device.properties?.name || device.display_name || 'Unnamed Lock',
-          manufacturer: device.properties?.manufacturer || device.manufacturer,
-          properties: device.properties,
+          manufacturer: device.properties?.manufacturer || (device as any).manufacturer,
+          properties: device.properties as Lock['properties'],
           connected_account_id: device.connected_account_id,
         }));
     } catch (error) {
@@ -172,12 +169,10 @@ class SeamService {
   }
 
   async unlockDoor(deviceId: string): Promise<void> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized.');
-    }
+    const client = this.getClient();
 
     try {
-      await this.client.locks.unlockDoor({ device_id: deviceId });
+      await client.locks.unlockDoor({ device_id: deviceId });
       console.log('Door unlocked successfully:', deviceId);
     } catch (error) {
       console.error('Error unlocking door:', error);
@@ -186,12 +181,10 @@ class SeamService {
   }
 
   async lockDoor(deviceId: string): Promise<void> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized.');
-    }
+    const client = this.getClient();
 
     try {
-      await this.client.locks.lockDoor({ device_id: deviceId });
+      await client.locks.lockDoor({ device_id: deviceId });
       console.log('Door locked successfully:', deviceId);
     } catch (error) {
       console.error('Error locking door:', error);
@@ -203,10 +196,8 @@ class SeamService {
     deviceId: string,
     duration: number,
     unit: 'minutes' | 'hours'
-  ): Promise<{ code: string; expiresAt: number }> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized.');
-    }
+  ): Promise<AccessCodeResponse> {
+    const client = this.getClient();
 
     try {
       const now = new Date();
@@ -215,14 +206,14 @@ class SeamService {
         now.getTime() + duration * (unit === 'hours' ? 60 * 60 * 1000 : 60 * 1000)
       ).toISOString();
 
-      const accessCode = await this.client.accessCodes.create({
+      const accessCode = await client.accessCodes.create({
         device_id: deviceId,
         name: `Temporary Access - ${now.toLocaleString()}`,
         starts_at: startsAt,
         ends_at: endsAt,
       });
 
-      console.log('Access code created:', accessCode);
+      console.log('Access code created:', accessCode.access_code_id);
 
       return {
         code: accessCode.code || '',
@@ -235,12 +226,10 @@ class SeamService {
   }
 
   async deleteAccessCode(accessCodeId: string): Promise<void> {
-    if (!this.client) {
-      throw new Error('Seam client not initialized.');
-    }
+    const client = this.getClient();
 
     try {
-      await this.client.accessCodes.delete({ access_code_id: accessCodeId });
+      await client.accessCodes.delete({ access_code_id: accessCodeId });
       console.log('Access code deleted:', accessCodeId);
     } catch (error) {
       console.error('Error deleting access code:', error);

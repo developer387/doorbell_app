@@ -61,28 +61,42 @@ export const PropertyDetails = () => {
         const mergedStates = property.smartLocks.map((lock) => {
           const persisted = persistedStates.find((ps) => ps.device_id === lock.device_id);
 
+          if (!persisted) {
+            return {
+              device_id: lock.device_id,
+              display_name: lock.display_name,
+              manufacturer: lock.manufacturer,
+              isLocked: true,
+            };
+          }
+
+          const now = Date.now();
+
           // Check if temporary unlock has expired
-          if (persisted?.temporaryUnlock?.active) {
-            const now = Date.now();
+          if (persisted.temporaryUnlock?.active) {
             if (persisted.temporaryUnlock.expiresAt <= now) {
               // Expired, clear it
               return {
-                device_id: lock.device_id,
-                display_name: lock.display_name,
-                manufacturer: lock.manufacturer,
+                ...persisted,
+                temporaryUnlock: undefined,
                 isLocked: true,
               };
             }
-            // Still valid, keep it
-            return persisted;
           }
 
-          return persisted || {
-            device_id: lock.device_id,
-            display_name: lock.display_name,
-            manufacturer: lock.manufacturer,
-            isLocked: true,
-          };
+          // Check if instant unlock has expired
+          if (persisted.instantUnlock?.active) {
+            if (persisted.instantUnlock.expiresAt <= now) {
+              // Expired, clear it and lock
+              return {
+                ...persisted,
+                isLocked: true,
+                instantUnlock: undefined,
+              };
+            }
+          }
+
+          return persisted;
         });
 
         setLockStates(mergedStates);
