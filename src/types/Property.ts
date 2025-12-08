@@ -21,4 +21,6 @@ export interface Property {
   propertyName: string;
   smartLocks: SmartLock[];
   userId: string;
+  pinCode?: string;
+  id?: string; // Firestore Document ID
 }

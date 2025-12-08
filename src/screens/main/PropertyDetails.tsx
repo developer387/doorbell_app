@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '@/navigation-types';
-import { StyleSheet, View, TouchableOpacity, Switch, ScrollView } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
@@ -12,6 +12,12 @@ import { Title, Body, SmallText } from '@/typography';
 import { type ChipItem, FilterChips, Loading } from '@/components';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
 import { useGetUserProperty } from '@/hooks';
+import * as Clipboard from 'expo-clipboard';
+import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import { BottomSheet, Input, Button } from '@/components';
+import { ChevronRight, Copy, Trash2, AlertTriangle, CheckCircle, X } from 'lucide-react-native';
+import { Alert } from 'react-native';
 
 type PropertyDetailsRouteProp = RouteProp<MainStackParamList, 'PropertyDetails'>;
 
@@ -38,6 +44,109 @@ export const PropertyDetails = () => {
   const { propertyId } = route.params;
 
   const { property, loading } = useGetUserProperty(user?.uid, propertyId);
+  const [currentPin, setCurrentPin] = useState<string | undefined>(undefined);
+
+  // Update currentPin when property loads
+  React.useEffect(() => {
+    if (property?.pinCode) {
+      setCurrentPin(property.pinCode);
+    }
+  }, [property?.pinCode]);
+
+  // PIN Code State
+  const [pinCode, setPinCode] = useState('');
+  const [isPinSheetVisible, setIsPinSheetVisible] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const [isSavingPin, setIsSavingPin] = useState(false);
+
+  // Disconnect State
+  const [isDisconnectSuccessVisible, setIsDisconnectSuccessVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handlePinChange = (text: string) => {
+    if (/^\d*$/.test(text) && text.length <= 4) {
+      setPinCode(text);
+      setPinError('');
+    }
+  };
+
+  const handleSavePin = async () => {
+    if (pinCode.length !== 4) {
+      setPinError('PIN must be exactly 4 digits');
+      return;
+    }
+    if (!property?.id) {
+      Alert.alert('Error', 'Property not found');
+      return;
+    }
+    setIsSavingPin(true);
+    try {
+      const propertyRef = doc(db, 'properties', property.id);
+      await updateDoc(propertyRef, { pinCode });
+      setCurrentPin(pinCode);
+      setPinCode(''); // Clear input
+    } catch (error) {
+      console.error('Error saving PIN:', error);
+      Alert.alert('Error', 'Failed to save PIN');
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
+
+  const handleCopyPin = async () => {
+    if (currentPin) {
+      await Clipboard.setStringAsync(currentPin);
+      // Optional: Show toast or feedback
+    }
+  };
+
+  const openPinSheet = () => {
+    setPinCode('');
+    setPinError('');
+    setIsPinSheetVisible(true);
+  };
+
+  const handleDisconnectPress = () => {
+    // Custom Alert Implementation matching design
+    Alert.alert(
+      'Disconnect Door Bell',
+      'All the details about this property will be deleted if you continue. Are you sure you want to Continue with this?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: handleDisconnect,
+        },
+      ]
+    );
+  };
+
+  const handleDisconnect = async () => {
+    if (!property?.id) {
+      Alert.alert('Error', 'Property not found');
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const propertyRef = doc(db, 'properties', property.id);
+      await deleteDoc(propertyRef);
+      setIsDisconnectSuccessVisible(true);
+    } catch (error) {
+      console.error('Error disconnecting property:', error);
+      Alert.alert('Error', 'Failed to disconnect property');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDisconnectSuccessDone = () => {
+    setIsDisconnectSuccessVisible(false);
+    navigation.navigate('MainTabs'); // Navigate back to home
+  };
 
   // Lock states management
   const [lockStates, setLockStates] = useState<LockState[]>([]);
@@ -199,81 +308,185 @@ export const PropertyDetails = () => {
               thumbColor={isGuestAccessEnabled ? '#f4f3f4' : '#f4f3f4'}
             />
           </View>
-          <TouchableOpacity style={styles.actionSection}>
+
+          <TouchableOpacity style={styles.actionRow} onPress={openPinSheet}>
+            <View style={styles.textBlock}>
+              <Body weight="bolder">Property PIN Code</Body>
+              <Body variant="secondary">
+                This will be required for guest to have access to the property.
+              </Body>
+            </View>
+            <ChevronRight size={24} color={colors.dark} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionSection} onPress={handleDisconnectPress}>
             <View style={styles.textBlock}>
               <Body variant="error">Disconnect Door Bell</Body>
               <SmallText variant="secondary">
                 You will loose all the details about this property.
               </SmallText>
             </View>
+            <ChevronRight size={24} color={colors.dark} />
           </TouchableOpacity>
         </ScrollView>
-
       )}
+
       {activeChip === 'locks' && (
-        <>
-          <ScrollView style={styles.contentScroll}>
-            {property?.smartLocks && property.smartLocks.length > 0 ? (
-              <View style={styles.locksContainer}>
-                {/* Section Header */}
-                <View style={styles.smartLocksHeader}>
-                  <Body weight="bolder">My Smart Locks</Body>
-                  <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
-                    <Body variant="primary">+ Add Smart Lock</Body>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Group locks by manufacturer and render SmartLockItem */}
-                {Object.entries(
-                  property.smartLocks.reduce((acc, lock) => {
-                    const manufacturer = lock.manufacturer || 'Unknown';
-                    if (!acc[manufacturer]) {
-                      acc[manufacturer] = [];
-                    }
-                    acc[manufacturer].push(lock);
-                    return acc;
-                  }, {} as Record<string, typeof property.smartLocks>)
-                ).map(([manufacturer, locks]) => (
-                  <View key={manufacturer}>
-                    {locks.map((lock) => {
-                      // Find the lock state
-                      const lockState = lockStates.find(
-                        (ls) => ls.device_id === lock.device_id
-                      ) || {
-                        device_id: lock.device_id,
-                        display_name: lock.display_name,
-                        manufacturer: lock.manufacturer,
-                        isLocked: true,
-                      };
-
-                      return (
-                        <SmartLockItem
-                          key={lock.device_id}
-                          lock={lockState}
-                          onLockStateChange={handleLockStateChange}
-                        />
-                      );
-                    })}
-                  </View>
-                ))}
+        <ScrollView style={styles.contentScroll}>
+          {property?.smartLocks && property.smartLocks.length > 0 ? (
+            <View style={styles.locksContainer}>
+              <View style={styles.smartLocksHeader}>
+                <Body weight="bolder">My Smart Locks</Body>
+                <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
+                  <Body variant="primary">+ Add Smart Lock</Body>
+                </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.emptyLocksState}>
-                <View style={styles.emptyLocksBrandSection}>
-                  <Body weight="bolder">Smart Lock Brand</Body>
-                  <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
-                    <Body variant="primary">+ Add Brand</Body>
-                  </TouchableOpacity>
+
+              {Object.entries(
+                property.smartLocks.reduce((acc, lock) => {
+                  const manufacturer = lock.manufacturer || 'Unknown';
+                  if (!acc[manufacturer]) {
+                    acc[manufacturer] = [];
+                  }
+                  acc[manufacturer].push(lock);
+                  return acc;
+                }, {} as Record<string, typeof property.smartLocks>)
+              ).map(([manufacturer, locks]) => (
+                <View key={manufacturer}>
+                  {locks.map((lock) => {
+                    const lockState = lockStates.find(
+                      (ls) => ls.device_id === lock.device_id
+                    ) || {
+                      device_id: lock.device_id,
+                      display_name: lock.display_name,
+                      manufacturer: lock.manufacturer,
+                      isLocked: true,
+                    };
+
+                    return (
+                      <SmartLockItem
+                        key={lock.device_id}
+                        lock={lockState}
+                        onLockStateChange={handleLockStateChange}
+                      />
+                    );
+                  })}
                 </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyLocksState}>
+              <View style={styles.emptyLocksBrandSection}>
+                <Body weight="bolder">Smart Lock Brand</Body>
+                <TouchableOpacity onPress={() => navigation.navigate('LinkSmartLock', { propertyId })}>
+                  <Body variant="primary">+ Add Brand</Body>
+                </TouchableOpacity>
               </View>
-            )}
-          </ScrollView>
-        </>
+            </View>
+          )}
+        </ScrollView>
       )}
+
       {activeChip === 'request' && (
         <Body>Requests</Body>
       )}
 
+      {/* PIN Code Bottom Sheet */}
+      <BottomSheet
+        isVisible={isPinSheetVisible}
+        onClose={() => setIsPinSheetVisible(false)}
+        minHeight={350}
+      >
+        <View style={styles.sheetHeader}>
+          <Body weight="bolder">Property PIN Code</Body>
+          <TouchableOpacity onPress={() => setIsPinSheetVisible(false)}>
+            <X size={24} color={colors.dark} />
+          </TouchableOpacity>
+        </View>
+
+        {currentPin && !pinCode ? (
+          <View style={styles.pinDisplayContainer}>
+            <Title style={styles.pinText}>{currentPin}</Title>
+            <TouchableOpacity style={styles.copyButton} onPress={handleCopyPin}>
+              <Body variant="primary" style={{ textDecorationLine: 'underline' }}>Copy Code</Body>
+              <Copy size={20} color={colors.primary} />
+            </TouchableOpacity>
+
+            <Body variant="secondary" style={styles.pinNote}>
+              Don't share this with anyone except a trusted Guest
+            </Body>
+
+            <Button
+              title="Change Code"
+              onPress={() => setPinCode(currentPin)}
+              style={styles.saveButton}
+            />
+          </View>
+        ) : (
+          <View style={styles.pinInputContainer}>
+            <Input
+              value={pinCode}
+              onChangeText={handlePinChange}
+              placeholder="Enter 4-digit PIN"
+              keyboardType="numeric"
+              maxLength={4}
+              error={pinError}
+              label="Enter PIN"
+            />
+            <Button
+              title="Save"
+              onPress={handleSavePin}
+              disabled={pinCode.length !== 4}
+              isLoading={isSavingPin}
+              style={styles.saveButton}
+            />
+          </View>
+        )}
+      </BottomSheet>
+
+      {/* Disconnect Success Bottom Sheet */}
+      <BottomSheet
+        isVisible={isDisconnectSuccessVisible}
+        onClose={() => { }}
+        enablePanGesture={false}
+        closeOnBackdropPress={false}
+        minHeight={400}
+      >
+        <View style={styles.successSheetContainer}>
+          <View style={styles.closeButtonContainer}>
+            <TouchableOpacity onPress={handleDisconnectSuccessDone}>
+              <X size={24} color={colors.dark} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.successIconContainer}>
+            <Image
+              source={require('../../../assets/disconnect.png')}
+              resizeMode="contain"
+            />
+          </View>
+
+          <Title style={styles.successTitle}>Door Bell disconnected successfully</Title>
+
+          <View style={styles.disconnectedPropertyCard}>
+            <View>
+              <Body weight="bolder">{property?.propertyName}</Body>
+              <SmallText variant="secondary">{property?.address}</SmallText>
+            </View>
+            <View style={styles.houseIconPlaceholder} />
+          </View>
+
+          <SmallText variant="secondary" style={styles.successNote}>
+            All details about this property has been deleted
+          </SmallText>
+
+          <Button
+            title="Done"
+            onPress={handleDisconnectSuccessDone}
+            style={styles.doneButton}
+          />
+        </View>
+      </BottomSheet>
     </View>
   );
 };
@@ -401,4 +614,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
   },
-});
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  pinDisplayContainer: {
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 20,
+  },
+  pinText: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    letterSpacing: 4,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pinNote: {
+    textAlign: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 20,
+  },
+  pinInputContainer: {
+    gap: 24,
+    paddingVertical: 20,
+  },
+  saveButton: {
+    marginTop: 16,
+  },
+  successSheetContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  closeButtonContainer: {
+    width: '100%',
+    alignItems: 'flex-end',
+    marginBottom: 20,
+  },
+  successIconContainer: {
+    marginBottom: 24,
+  },
+  successTitle: {
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  disconnectedPropertyCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  houseIconPlaceholder: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 8,
+  },
+  successNote: {
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  doneButton: {
+    width: '100%',
+  }
+})

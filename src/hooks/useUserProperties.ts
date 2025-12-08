@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/context/UserContext';
 import { type Property } from '@/types';
@@ -12,23 +12,23 @@ export const useUserProperties = () => {
   useEffect(() => {
     if (!user) return;
 
-    const fetchProperties = async () => {
-      setLoading(true);
-      try {
-        const propertiesRef = collection(db, 'properties');
-        const q = query(propertiesRef, where('userId', '==', user.uid));
-        const querySnapshot = await getDocs(q);
+    setLoading(true);
+    const propertiesRef = collection(db, 'properties');
+    const q = query(propertiesRef, where('userId', '==', user.uid));
 
-        const userProperties: Property[] = querySnapshot.docs.map(doc => doc.data() as Property);
-        setProperties(userProperties);
-      } catch (error) {
-        console.error('Error fetching properties:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-  //@typescript-eslint/no-floating-promises
-    fetchProperties();
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const userProperties: Property[] = querySnapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as Property));
+      setProperties(userProperties);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching properties:', error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   return { properties, loading };

@@ -32,7 +32,7 @@ export const useGetUserProperty = (
 
         if (!snapshot.empty) {
           const doc = snapshot.docs[0];
-          setProperty({ ...doc.data() } as Property);
+          setProperty({ ...doc.data(), id: doc.id } as Property);
         } else {
           setProperty(null);
         }
