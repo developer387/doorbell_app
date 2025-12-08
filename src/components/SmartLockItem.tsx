@@ -176,6 +176,7 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
         useNativeDriver: true,
         tension: 50,
         friction: 7,
+        useNativeDriver: true,
       }).start(() => {
         setTimeout(() => {
           Animated.spring(slideAnim, {

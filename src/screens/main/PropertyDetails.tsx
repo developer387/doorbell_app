@@ -16,7 +16,7 @@ import * as Clipboard from 'expo-clipboard';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { BottomSheet, Input, Button } from '@/components';
-import { ChevronRight, Copy, Trash2, AlertTriangle, CheckCircle, X } from 'lucide-react-native';
+import { ChevronRight, Copy, X } from 'lucide-react-native';
 import { Alert } from 'react-native';
 
 type PropertyDetailsRouteProp = RouteProp<MainStackParamList, 'PropertyDetails'>;
@@ -63,7 +63,6 @@ export const PropertyDetails = () => {
   const [isDisconnectSuccessVisible, setIsDisconnectSuccessVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Edit Name State
   // Edit Name State
   const [isEditSheetVisible, setIsEditSheetVisible] = useState(false);
   const [editName, setEditName] = useState('');
