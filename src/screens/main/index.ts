@@ -4,3 +4,4 @@ export { SettingsScreen } from './SettingsScreen';
 export { AddPropertyScreen } from './AddPropertyScreen';
 export { LinkSmartLockScreen } from './LinkSmartLockScreen';
 export { ListLocksScreen } from './ListLocksScreen';
+export { SetPropertyPinScreen } from './SetPropertyPinScreen';

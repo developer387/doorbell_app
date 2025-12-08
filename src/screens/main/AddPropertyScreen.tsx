@@ -18,10 +18,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { useAuth } from '@/context/UserContext';
-import { Dropdown } from '@/components/Dropdown';
+
 import { generateUUID, reverseGeocode } from '@/utils/helpers';
-import { addDoc, collection } from 'firebase/firestore';
-import { db } from '@/config/firebase';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
@@ -31,11 +29,11 @@ export const AddPropertyScreen = () => {
   const [scanned, setScanned] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+
   const { user } = useAuth();
 
   const [propertyId, setPropertyId] = useState<string>('');
-  const [category, setCategory] = useState('');
+
   const [propertyName, setPropertyName] = useState('');
   const [address, setAddress] = useState('');
   const [location, setLocation] = useState<{
@@ -134,10 +132,7 @@ export const AddPropertyScreen = () => {
   };
 
   const handleSubmit = async () => {
-    if (!category) {
-      Alert.alert('Error', 'Please select a category');
-      return;
-    }
+
 
     if (!user) {
       Alert.alert('Error', 'You must be logged in to add a property');
@@ -145,14 +140,12 @@ export const AddPropertyScreen = () => {
     }
 
     try {
-      setIsSaving(true);
-
       const id = propertyId || generateUUID();
       setPropertyId(id);
 
       const propertyData = {
         propertyId: id,
-        category,
+        category: 'Property',
         propertyName: propertyName || null,
         address: address || null,
         location: location || null,
@@ -161,16 +154,11 @@ export const AddPropertyScreen = () => {
         createdAt: new Date().toISOString(),
       };
 
+      navigation.navigate('SetPropertyPin', { propertyData });
 
-      await addDoc(collection(db, 'properties'), propertyData);
-
-      setIsSaving(false);
-
-      navigation.navigate('LinkSmartLock', { propertyId: id });
     } catch (error) {
-      console.error('Error saving property:', error);
-      Alert.alert('Error', 'Failed to save property. Please check console.');
-      setIsSaving(false);
+      console.error('Error preparing property:', error);
+      Alert.alert('Error', 'Failed to proceed. Please try again.');
     }
   };
 
@@ -255,15 +243,7 @@ export const AddPropertyScreen = () => {
         <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
           <MediumText variant="secondary">Enter your property details</MediumText>
 
-          <View style={styles.inputGroup}>
-            <Dropdown
-              label="Category"
-              placeholder="Category"
-              value={category}
-              onValueChange={setCategory}
-              options={['Property', 'Vehicle']}
-            />
-          </View>
+
 
           <View style={styles.inputGroup}>
             <MediumText weight="normal" variant="black">Property name</MediumText>
@@ -325,15 +305,10 @@ export const AddPropertyScreen = () => {
           )}
 
           <TouchableOpacity
-            style={[styles.submitButton, isSaving && styles.submitButtonDisabled]}
+            style={styles.submitButton}
             onPress={handleSubmit}
-            disabled={isSaving}
           >
-            {isSaving ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Body variant="white" weight="bold">Proceed</Body>
-            )}
+            <Body variant="white" weight="bold">Proceed</Body>
           </TouchableOpacity>
         </ScrollView>
       </View>
