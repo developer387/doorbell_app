@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     submitButton: {
-        backgroundColor: '#d1d5db', // Grey default
+        backgroundColor: colors.primary, // Primary color (green)
         paddingVertical: 16,
         borderRadius: 12,
         alignItems: 'center',

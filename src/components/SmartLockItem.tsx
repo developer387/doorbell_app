@@ -38,9 +38,10 @@ export interface LockState {
 interface SmartLockItemProps {
   lock: LockState;
   onLockStateChange: (deviceId: string, newState: Partial<LockState>) => void;
+  onEdit: () => void;
 }
 
-export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateChange }) => {
+export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateChange, onEdit }) => {
   const [countdown, setCountdown] = useState<string | null>(null);
   const [showTemporaryUnlockControls, setShowTemporaryUnlockControls] = useState(false);
   const [duration, setDuration] = useState<string>('1');
@@ -273,7 +274,7 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
             <SmallText variant="secondary">{lock.manufacturer}</SmallText>
           </View>
         </View>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={onEdit}>
           <SmallText variant="primary">Edit</SmallText>
         </TouchableOpacity>
       </View>

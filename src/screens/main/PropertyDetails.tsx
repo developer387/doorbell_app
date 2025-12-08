@@ -63,6 +63,18 @@ export const PropertyDetails = () => {
   const [isDisconnectSuccessVisible, setIsDisconnectSuccessVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Edit Name State
+  // Edit Name State
+  const [isEditSheetVisible, setIsEditSheetVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  // Edit Lock State
+  const [isEditLockSheetVisible, setIsEditLockSheetVisible] = useState(false);
+  const [editLockName, setEditLockName] = useState('');
+  const [selectedLockId, setSelectedLockId] = useState<string | null>(null);
+  const [isSavingLockName, setIsSavingLockName] = useState(false);
+
   const handlePinChange = (text: string) => {
     if (/^\d*$/.test(text) && text.length <= 4) {
       setPinCode(text);
@@ -146,6 +158,70 @@ export const PropertyDetails = () => {
   const handleDisconnectSuccessDone = () => {
     setIsDisconnectSuccessVisible(false);
     navigation.navigate('MainTabs'); // Navigate back to home
+  };
+
+  const handleSaveName = async () => {
+    if (!editName.trim()) {
+      Alert.alert('Error', 'Property name cannot be empty');
+      return;
+    }
+    if (!property?.id) return;
+
+    setIsSavingName(true);
+    try {
+      const propertyRef = doc(db, 'properties', property.id);
+      await updateDoc(propertyRef, { propertyName: editName.trim() });
+      setIsEditSheetVisible(false);
+    } catch (error) {
+      console.error('Error updating property name:', error);
+      Alert.alert('Error', 'Failed to update property name');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleEditLock = (lockId: string, currentName: string) => {
+    setSelectedLockId(lockId);
+    setEditLockName(currentName);
+    setIsEditLockSheetVisible(true);
+  };
+
+  const handleSaveLockName = async () => {
+    if (!editLockName.trim()) {
+      Alert.alert('Error', 'Lock name cannot be empty');
+      return;
+    }
+    if (!property?.id || !selectedLockId || !property.smartLocks) return;
+
+    setIsSavingLockName(true);
+    try {
+      const propertyRef = doc(db, 'properties', property.id);
+
+      const updatedSmartLocks = property.smartLocks.map((lock: any) => {
+        if (lock.device_id === selectedLockId) {
+          return { ...lock, display_name: editLockName.trim() };
+        }
+        return lock;
+      });
+
+      await updateDoc(propertyRef, { smartLocks: updatedSmartLocks });
+      setIsEditLockSheetVisible(false);
+
+      // Also update local lock state if needed to reflect immediately without refresh
+      setLockStates((prev) =>
+        prev.map((lock) =>
+          lock.device_id === selectedLockId
+            ? { ...lock, display_name: editLockName.trim() }
+            : lock
+        )
+      );
+
+    } catch (error) {
+      console.error('Error updating lock name:', error);
+      Alert.alert('Error', 'Failed to update lock name');
+    } finally {
+      setIsSavingLockName(false);
+    }
   };
 
   // Lock states management
@@ -285,7 +361,10 @@ export const PropertyDetails = () => {
           <View>
             <View style={styles.sectionHeader}>
               <Body weight="bolder">Property Details</Body>
-              <TouchableOpacity>
+              <TouchableOpacity onPress={() => {
+                setEditName(property?.propertyName || '');
+                setIsEditSheetVisible(true);
+              }}>
                 <Body variant="primary">Edit</Body>
               </TouchableOpacity>
             </View>
@@ -368,6 +447,7 @@ export const PropertyDetails = () => {
                         key={lock.device_id}
                         lock={lockState}
                         onLockStateChange={handleLockStateChange}
+                        onEdit={() => handleEditLock(lock.device_id, lock.display_name)}
                       />
                     );
                   })}
@@ -484,6 +564,66 @@ export const PropertyDetails = () => {
             title="Done"
             onPress={handleDisconnectSuccessDone}
             style={styles.doneButton}
+          />
+        </View>
+      </BottomSheet>
+
+      {/* Edit Property Name Bottom Sheet */}
+      <BottomSheet
+        isVisible={isEditSheetVisible}
+        onClose={() => setIsEditSheetVisible(false)}
+        minHeight={300}
+      >
+        <View style={styles.sheetHeader}>
+          <Body weight="bolder">Edit Property Name</Body>
+          <TouchableOpacity onPress={() => setIsEditSheetVisible(false)}>
+            <X size={24} color={colors.dark} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.pinInputContainer}>
+          <Input
+            value={editName}
+            onChangeText={setEditName}
+            placeholder="Enter property name"
+            label="Property Name"
+          />
+          <Button
+            title="Save Changes"
+            onPress={handleSaveName}
+            isLoading={isSavingName}
+            disabled={!editName.trim()}
+            style={styles.saveButton}
+          />
+        </View>
+      </BottomSheet>
+
+      {/* Edit Lock Name Bottom Sheet */}
+      <BottomSheet
+        isVisible={isEditLockSheetVisible}
+        onClose={() => setIsEditLockSheetVisible(false)}
+        minHeight={300}
+      >
+        <View style={styles.sheetHeader}>
+          <Body weight="bolder">Edit Lock Name</Body>
+          <TouchableOpacity onPress={() => setIsEditLockSheetVisible(false)}>
+            <X size={24} color={colors.dark} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.pinInputContainer}>
+          <Input
+            value={editLockName}
+            onChangeText={setEditLockName}
+            placeholder="Enter lock name"
+            label="Lock Name"
+          />
+          <Button
+            title="Save Changes"
+            onPress={handleSaveLockName}
+            isLoading={isSavingLockName}
+            disabled={!editLockName.trim()}
+            style={styles.saveButton}
           />
         </View>
       </BottomSheet>
