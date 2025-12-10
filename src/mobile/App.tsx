@@ -1,5 +1,5 @@
 import React from 'react';
-import { RootNavigator } from '@/navigation';
+import { RootNavigator } from '@navigation';
 import { UserProvider } from '@/context/UserContext';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

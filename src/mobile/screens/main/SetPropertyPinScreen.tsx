@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainStackParamList } from '@/navigation-types';
+import { MainStackParamList } from '@navigation-types';
 import { colors } from '@/styles/colors';
 import { Heading, Body } from '@/typography';
 import { ArrowLeft } from 'lucide-react-native';

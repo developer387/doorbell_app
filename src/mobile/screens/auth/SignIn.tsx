@@ -194,7 +194,7 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
                 disabled={false}
                 leftIcon={
                   <Image
-                    source={require('../../../assets/google.png')}
+                    source={require('../../../../assets/google.png')}
                     style={{ width: 16, height: 16 }}
                   />
                 }
@@ -208,7 +208,7 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
                 disabled={false}
                 leftIcon={
                   <Image
-                    source={require('../../../assets/apple.png')}
+                    source={require('../../../../assets/apple.png')}
                     style={{ width: 16, height: 16 }}
                   />
                 }

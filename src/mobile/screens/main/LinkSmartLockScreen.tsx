@@ -429,7 +429,7 @@ export const LinkSmartLockScreen = () => {
                     <View key={device.device_id} style={styles.lockRow}>
                       <View style={styles.lockLeft}>
                         <Image
-                          source={require('../../../assets/remote.png')}
+                          source={require('../../../../assets/remote.png')}
                           style={styles.lockIcon}
                           resizeMode="contain"
                         />

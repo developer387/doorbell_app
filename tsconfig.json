@@ -14,25 +14,52 @@
     "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/*"
+        "src/shared/*"
       ],
       "@components/*": [
-        "src/components/*"
+        "src/shared/components/*"
       ],
-      "@screens/*": [
-        "src/screens/*"
-      ],
-      "@navigation/*": [
-        "src/navigation/*"
-      ],
-      "@navigation-types": [
-        "src/navigation-types"
-      ],
-      "@utils/*": [
-        "src/utils/*"
+      "@config/*": [
+        "src/shared/config/*"
       ],
       "@constants/*": [
-        "src/constants/*"
+        "src/shared/constants/*"
+      ],
+      "@context/*": [
+        "src/shared/context/*"
+      ],
+      "@hooks/*": [
+        "src/shared/hooks/*"
+      ],
+      "@services/*": [
+        "src/shared/services/*"
+      ],
+      "@styles/*": [
+        "src/shared/styles/*"
+      ],
+      "@types/*": [
+        "src/shared/types/*"
+      ],
+      "@typography/*": [
+        "src/shared/typography/*"
+      ],
+      "@utils/*": [
+        "src/shared/utils/*"
+      ],
+      "@screens/*": [
+        "src/mobile/screens/*"
+      ],
+      "@screens": [
+        "src/mobile/screens"
+      ],
+      "@navigation/*": [
+        "src/mobile/navigation/*"
+      ],
+      "@navigation": [
+        "src/mobile/navigation"
+      ],
+      "@navigation-types": [
+        "src/mobile/navigation-types"
       ]
     }
   },

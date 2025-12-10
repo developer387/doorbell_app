@@ -176,7 +176,6 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
         useNativeDriver: true,
         tension: 50,
         friction: 7,
-        useNativeDriver: true,
       }).start(() => {
         setTimeout(() => {
           Animated.spring(slideAnim, {
@@ -263,7 +262,7 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
       <View style={styles.lockHeader}>
         <View style={styles.lockHeaderLeft}>
           <Image
-            source={require('../../assets/remote.png')}
+            source={require('../../../assets/remote.png')}
             style={styles.lockIcon}
             resizeMode="contain"
           />

@@ -22,19 +22,41 @@ npm start
 
 ## 📱 Running the App
 
+## 1. Mobile App
+
+To run on Android or iOS Simulator:
+
+**Android:**
 ```bash
-# Start Expo development server
-npm start
-
-# Run on Android
 npm run android
-
-# Run on iOS (macOS only)
-npm run ios
-
-# Run on Web
-npm run web
+# OR
+npx expo start --android
 ```
+
+**iOS:**
+```bash
+npm run ios
+# OR
+npx expo start --ios
+```
+
+**Interactive Menu:**
+You can also run the standard start command and press `a` for Android or `i` for iOS:
+```bash
+npx expo start
+```
+
+## 2. Web App
+
+To run the web version in your browser:
+
+```bash
+npm run web
+# OR
+npx expo start --web --tunnel
+
+```
+
 
 ## 🔧 Development Scripts
 

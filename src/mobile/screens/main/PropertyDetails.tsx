@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useRoute, type RouteProp } from '@react-navigation/native';
-import type { MainStackParamList } from '@/navigation-types';
+import type { MainStackParamList } from '@navigation-types';
 import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft } from 'lucide-react-native';
@@ -540,7 +540,7 @@ export const PropertyDetails = () => {
 
           <View style={styles.successIconContainer}>
             <Image
-              source={require('../../../assets/disconnect.png')}
+              source={require('../../../../assets/disconnect.png')}
               resizeMode="contain"
             />
           </View>
