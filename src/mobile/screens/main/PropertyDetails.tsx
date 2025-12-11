@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '@navigation-types';
-import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Image } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Switch, ScrollView, Image, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
@@ -46,7 +46,7 @@ export const PropertyDetails = () => {
   const route = useRoute<PropertyDetailsRouteProp>();
   const { propertyId } = route.params;
 
-  const { property, loading } = useGetUserProperty(user?.uid, propertyId);
+  const { property, loading, refetch } = useGetUserProperty(user?.uid, propertyId);
   const [currentPin, setCurrentPin] = useState<string | undefined>(undefined);
 
   // Update currentPin when property loads
@@ -92,9 +92,25 @@ export const PropertyDetails = () => {
   const [newGuestEndTime, setNewGuestEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000));
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'date' | 'time'>('date');
+  const [activeDateField, setActiveDateField] = useState<'start' | 'end'>('start');
   const [isSavingGuest, setIsSavingGuest] = useState(false);
   const [createdGuest, setCreatedGuest] = useState<Guest | null>(null);
   const [isGuestSuccessVisible, setIsGuestSuccessVisible] = useState(false);
+
+  // Edit Guest State
+  const [isEditGuestSheetVisible, setIsEditGuestSheetVisible] = useState(false);
+  const [editingGuestId, setEditingGuestId] = useState<string | null>(null);
+  const [editGuestName, setEditGuestName] = useState('');
+  const [editGuestAvatar, setEditGuestAvatar] = useState('avatar1');
+  const [editGuestStartTime, setEditGuestStartTime] = useState(new Date());
+  const [editGuestEndTime, setEditGuestEndTime] = useState(new Date());
+  const [editGuestPin, setEditGuestPin] = useState('');
+  const [showEditStartTimePicker, setShowEditStartTimePicker] = useState(false);
+  const [showEditEndTimePicker, setShowEditEndTimePicker] = useState(false);
+  const [editDatePickerMode, setEditDatePickerMode] = useState<'date' | 'time'>('date');
+  const [activeEditDateField, setActiveEditDateField] = useState<'start' | 'end'>('start');
+  const [isUpdatingGuest, setIsUpdatingGuest] = useState(false);
 
   const generatePin = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -123,6 +139,8 @@ export const PropertyDetails = () => {
         guests: arrayUnion(newGuest)
       });
 
+      await refetch();
+
       setCreatedGuest(newGuest);
       setIsAddGuestSheetVisible(false);
 
@@ -143,6 +161,62 @@ export const PropertyDetails = () => {
     }
   };
 
+  const openEditGuestSheet = (guest: Guest) => {
+    setEditingGuestId(guest.id);
+    setEditGuestName(guest.name);
+    setEditGuestAvatar(guest.avatar);
+    setEditGuestStartTime(new Date(guest.startTime));
+    setEditGuestEndTime(new Date(guest.endTime));
+    setEditGuestPin(guest.accessPin);
+    setIsEditGuestSheetVisible(true);
+  };
+
+  const handleUpdateGuest = async () => {
+    if (!editGuestName.trim()) {
+      Alert.alert('Error', 'Please enter a guest name');
+      return;
+    }
+    if (!property?.id || !editingGuestId || !property.guests) return;
+
+    setIsUpdatingGuest(true);
+    try {
+      const updatedGuests = property.guests.map((g) => {
+        if (g.id === editingGuestId) {
+          return {
+            ...g,
+            name: editGuestName.trim(),
+            avatar: editGuestAvatar,
+            startTime: editGuestStartTime.toISOString(),
+            endTime: editGuestEndTime.toISOString(),
+            accessPin: editGuestPin,
+          };
+        }
+        return g;
+      });
+
+      const propertyRef = doc(db, 'properties', property.id);
+      await updateDoc(propertyRef, {
+        guests: updatedGuests
+      });
+
+      await refetch();
+
+      setIsEditGuestSheetVisible(false);
+      Alert.alert('Success', 'Guest updated successfully');
+
+    } catch (error) {
+      console.error('Error updating guest:', error);
+      Alert.alert('Error', 'Failed to update guest');
+    } finally {
+      setIsUpdatingGuest(false);
+    }
+  };
+
+  const handleRegenerateGuestPin = () => {
+    const newPin = generatePin();
+    setEditGuestPin(newPin);
+  };
+
   const handleRemoveGuest = async (guest: Guest) => {
     if (!property?.id) return;
     try {
@@ -150,6 +224,7 @@ export const PropertyDetails = () => {
       await updateDoc(propertyRef, {
         guests: arrayRemove(guest)
       });
+      await refetch();
     } catch (error) {
       console.error('Error removing guest:', error);
       Alert.alert('Error', 'Failed to remove guest');
@@ -590,9 +665,14 @@ export const PropertyDetails = () => {
                       </View>
                       <Body weight="bold">{guest.name}</Body>
                     </View>
-                    <TouchableOpacity onPress={() => handleRemoveGuest(guest)}>
-                      <SmallText variant="error">Remove</SmallText>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 16 }}>
+                      <TouchableOpacity onPress={() => openEditGuestSheet(guest)}>
+                        <SmallText variant="primary">Edit</SmallText>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleRemoveGuest(guest)}>
+                        <SmallText variant="error">Remove</SmallText>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   <View style={styles.guestTimeRow}>
@@ -826,15 +906,35 @@ export const PropertyDetails = () => {
           <View style={styles.timePickerContainer}>
             <View style={{ flex: 1 }}>
               <Body weight="bold" style={{ marginBottom: 8 }}>Start time</Body>
-              <TouchableOpacity style={styles.timeInput} onPress={() => setShowStartTimePicker(true)}>
-                <Body>{newGuestStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Body>
+              <TouchableOpacity
+                style={styles.timeInput}
+                onPress={() => {
+                  setDatePickerMode('date');
+                  setActiveDateField('start');
+                  setShowStartTimePicker(true);
+                }}
+              >
+                <View>
+                  <Body>{newGuestStartTime.toLocaleDateString()}</Body>
+                  <SmallText variant="secondary">{newGuestStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</SmallText>
+                </View>
                 <Clock size={16} color="#888888" />
               </TouchableOpacity>
             </View>
             <View style={{ flex: 1 }}>
               <Body weight="bold" style={{ marginBottom: 8 }}>End time</Body>
-              <TouchableOpacity style={styles.timeInput} onPress={() => setShowEndTimePicker(true)}>
-                <Body>{newGuestEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Body>
+              <TouchableOpacity
+                style={styles.timeInput}
+                onPress={() => {
+                  setDatePickerMode('date');
+                  setActiveDateField('end');
+                  setShowEndTimePicker(true);
+                }}
+              >
+                <View>
+                  <Body>{newGuestEndTime.toLocaleDateString()}</Body>
+                  <SmallText variant="secondary">{newGuestEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</SmallText>
+                </View>
                 <Clock size={16} color="#888888" />
               </TouchableOpacity>
             </View>
@@ -843,20 +943,72 @@ export const PropertyDetails = () => {
           {showStartTimePicker && (
             <DateTimePicker
               value={newGuestStartTime}
-              mode="time"
-              onChange={(_, date) => {
-                setShowStartTimePicker(false);
-                if (date) setNewGuestStartTime(date);
+              mode={datePickerMode}
+              onChange={(event, date) => {
+                if (event.type === 'dismissed') {
+                  setShowStartTimePicker(false);
+                  return;
+                }
+
+                if (date) {
+                  if (datePickerMode === 'date') {
+                    // Keep current time, update date
+                    const newDate = new Date(newGuestStartTime);
+                    newDate.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+                    setNewGuestStartTime(newDate);
+
+                    if (Platform.OS === 'android') {
+                      setShowStartTimePicker(false);
+                      setDatePickerMode('time');
+                      setTimeout(() => setShowStartTimePicker(true), 100);
+                    } else {
+                      setDatePickerMode('time');
+                    }
+                  } else {
+                    // Keep current date, update time
+                    const newDate = new Date(newGuestStartTime);
+                    newDate.setHours(date.getHours(), date.getMinutes());
+                    setNewGuestStartTime(newDate);
+                    setShowStartTimePicker(false);
+                  }
+                } else {
+                  setShowStartTimePicker(false);
+                }
               }}
             />
           )}
           {showEndTimePicker && (
             <DateTimePicker
               value={newGuestEndTime}
-              mode="time"
+              mode={datePickerMode}
               onChange={(event, date) => {
-                setShowEndTimePicker(false);
-                if (date) setNewGuestEndTime(date);
+                if (event.type === 'dismissed') {
+                  setShowEndTimePicker(false);
+                  return;
+                }
+
+                if (date) {
+                  if (datePickerMode === 'date') {
+                    const newDate = new Date(newGuestEndTime);
+                    newDate.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+                    setNewGuestEndTime(newDate);
+
+                    if (Platform.OS === 'android') {
+                      setShowEndTimePicker(false);
+                      setDatePickerMode('time');
+                      setTimeout(() => setShowEndTimePicker(true), 100);
+                    } else {
+                      setDatePickerMode('time');
+                    }
+                  } else {
+                    const newDate = new Date(newGuestEndTime);
+                    newDate.setHours(date.getHours(), date.getMinutes());
+                    setNewGuestEndTime(newDate);
+                    setShowEndTimePicker(false);
+                  }
+                } else {
+                  setShowEndTimePicker(false);
+                }
               }}
             />
           )}
@@ -913,6 +1065,174 @@ export const PropertyDetails = () => {
             />
           </View>
         )}
+      </BottomSheet>
+
+      {/* Edit Guest Bottom Sheet */}
+      <BottomSheet
+        isVisible={isEditGuestSheetVisible}
+        onClose={() => setIsEditGuestSheetVisible(false)}
+        minHeight={600}
+      >
+        <ScrollView>
+          <View style={styles.sheetHeader}>
+            <Body weight="bolder">Edit Guest</Body>
+            <TouchableOpacity onPress={() => setIsEditGuestSheetVisible(false)}>
+              <X size={24} color={colors.dark} />
+            </TouchableOpacity>
+          </View>
+
+          <SmallText variant="secondary" style={{ marginBottom: 10 }}>Pick an Avatar for your guest</SmallText>
+          <View style={styles.avatarSelectionCmd}>
+            {['avatar1', 'avatar2', 'avatar3', 'avatar4'].map((avatar) => (
+              <TouchableOpacity
+                key={avatar}
+                style={[
+                  styles.avatarOption,
+                  process.env.NODE_ENV !== 'production' ? {} : {},
+                  editGuestAvatar === avatar && styles.selectedAvatar
+                ]}
+                onPress={() => setEditGuestAvatar(avatar)}
+              >
+                <View style={[styles.avatarCircleLarge, { backgroundColor: avatar === 'avatar1' ? '#4CAF50' : avatar === 'avatar2' ? '#FFC107' : avatar === 'avatar3' ? '#2196F3' : '#E91E63' }]}>
+                  <User size={30} color="white" />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Input
+            label="Guest name"
+            value={editGuestName}
+            onChangeText={setEditGuestName}
+            placeholder="Guest name"
+            maxLength={20}
+          />
+
+          <View style={styles.timePickerContainer}>
+            <View style={{ flex: 1 }}>
+              <Body weight="bold" style={{ marginBottom: 8 }}>Start time</Body>
+              <TouchableOpacity
+                style={styles.timeInput}
+                onPress={() => {
+                  setEditDatePickerMode('date');
+                  setActiveEditDateField('start');
+                  setShowEditStartTimePicker(true);
+                }}
+              >
+                <View>
+                  <Body>{editGuestStartTime.toLocaleDateString()}</Body>
+                  <SmallText variant="secondary">{editGuestStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</SmallText>
+                </View>
+                <Clock size={16} color="#888888" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Body weight="bold" style={{ marginBottom: 8 }}>End time</Body>
+              <TouchableOpacity
+                style={styles.timeInput}
+                onPress={() => {
+                  setEditDatePickerMode('date');
+                  setActiveEditDateField('end');
+                  setShowEditEndTimePicker(true);
+                }}
+              >
+                <View>
+                  <Body>{editGuestEndTime.toLocaleDateString()}</Body>
+                  <SmallText variant="secondary">{editGuestEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</SmallText>
+                </View>
+                <Clock size={16} color="#888888" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {showEditStartTimePicker && (
+            <DateTimePicker
+              value={editGuestStartTime}
+              mode={editDatePickerMode}
+              onChange={(event, date) => {
+                if (event.type === 'dismissed') {
+                  setShowEditStartTimePicker(false);
+                  return;
+                }
+
+                if (date) {
+                  if (editDatePickerMode === 'date') {
+                    const newDate = new Date(editGuestStartTime);
+                    newDate.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+                    setEditGuestStartTime(newDate);
+
+                    if (Platform.OS === 'android') {
+                      setShowEditStartTimePicker(false);
+                      setEditDatePickerMode('time');
+                      setTimeout(() => setShowEditStartTimePicker(true), 100);
+                    } else {
+                      setEditDatePickerMode('time');
+                    }
+                  } else {
+                    const newDate = new Date(editGuestStartTime);
+                    newDate.setHours(date.getHours(), date.getMinutes());
+                    setEditGuestStartTime(newDate);
+                    setShowEditStartTimePicker(false);
+                  }
+                } else {
+                  setShowEditStartTimePicker(false);
+                }
+              }}
+            />
+          )}
+          {showEditEndTimePicker && (
+            <DateTimePicker
+              value={editGuestEndTime}
+              mode={editDatePickerMode}
+              onChange={(event, date) => {
+                if (event.type === 'dismissed') {
+                  setShowEditEndTimePicker(false);
+                  return;
+                }
+
+                if (date) {
+                  if (editDatePickerMode === 'date') {
+                    const newDate = new Date(editGuestEndTime);
+                    newDate.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+                    setEditGuestEndTime(newDate);
+
+                    if (Platform.OS === 'android') {
+                      setShowEditEndTimePicker(false);
+                      setEditDatePickerMode('time');
+                      setTimeout(() => setShowEditEndTimePicker(true), 100);
+                    } else {
+                      setEditDatePickerMode('time');
+                    }
+                  } else {
+                    const newDate = new Date(editGuestEndTime);
+                    newDate.setHours(date.getHours(), date.getMinutes());
+                    setEditGuestEndTime(newDate);
+                    setShowEditEndTimePicker(false);
+                  }
+                } else {
+                  setShowEditEndTimePicker(false);
+                }
+              }}
+            />
+          )}
+
+          <View style={{ marginBottom: 24 }}>
+            <Body weight="bold" style={{ marginBottom: 8 }}>Access PIN</Body>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              <Title>{editGuestPin}</Title>
+              <TouchableOpacity onPress={handleRegenerateGuestPin} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Body variant="primary">Regenerate</Body>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Button
+            title="Save Changes"
+            onPress={handleUpdateGuest}
+            isLoading={isUpdatingGuest}
+            style={styles.saveButton}
+          />
+        </ScrollView>
       </BottomSheet>
     </View>
   );

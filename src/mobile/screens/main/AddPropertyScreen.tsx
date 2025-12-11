@@ -43,6 +43,7 @@ export const AddPropertyScreen = () => {
     longitude: number;
   } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const getCameraPermissions = async () => {
@@ -135,7 +136,7 @@ export const AddPropertyScreen = () => {
   };
 
   const handleSubmit = async () => {
-
+    if (isSubmitting) return;
 
     if (!user) {
       Alert.alert('Error', 'You must be logged in to add a property');
@@ -143,6 +144,7 @@ export const AddPropertyScreen = () => {
     }
 
     try {
+      setIsSubmitting(true);
       const id = propertyId || generateUUID();
       setPropertyId(id);
 
@@ -168,6 +170,8 @@ export const AddPropertyScreen = () => {
     } catch (error) {
       console.error('Error saving property:', error);
       Alert.alert('Error', 'Failed to save property. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -314,10 +318,13 @@ export const AddPropertyScreen = () => {
           )}
 
           <TouchableOpacity
-            style={styles.submitButton}
+            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
             onPress={handleSubmit}
+            disabled={isSubmitting}
           >
-            <Body variant="white" weight="bold">Proceed</Body>
+            <Body variant="white" weight="bold">
+              {isSubmitting ? 'Saving...' : 'Proceed'}
+            </Body>
           </TouchableOpacity>
         </ScrollView>
       </View>

@@ -45,9 +45,15 @@ export default function WebScannerScreen() {
             const property = await PropertyService.findByQRCodeUUID(uuid);
 
             if (property) {
-                // Property found - navigate to Guest screen (Ring doorbell)
-                console.log("Property found:", property);
-                navigation.navigate('Guest', { property });
+                // Check if guest access is allowed
+                if (property.allowGuest === false) { // Explicit check for false, assuming true/undefined means allowed or handling default elsewhere if needed, but safer to check strictly if field exists
+                    console.log("Property found but guest access is disabled:", property);
+                    navigation.navigate('Unavailable');
+                } else {
+                    // Property found and allowed - navigate to Guest screen
+                    console.log("Property found:", property);
+                    navigation.navigate('Guest', { property });
+                }
             } else {
                 // Property not found - navigate to Error screen
                 console.log("Property not found for UUID:", uuid);

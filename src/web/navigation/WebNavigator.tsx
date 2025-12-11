@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import WebScannerScreen from '../screens/WebScannerScreen';
 import WebGuestScreen from '../screens/WebGuestScreen';
 import WebErrorScreen from '../screens/WebErrorScreen';
+import WebPropertyUnavailableScreen from '../screens/WebPropertyUnavailableScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,6 +25,7 @@ export default function WebNavigator() {
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="Scanner" component={WebScannerScreen} />
                 <Stack.Screen name="Guest" component={WebGuestScreen} />
+                <Stack.Screen name="Unavailable" component={WebPropertyUnavailableScreen} />
                 <Stack.Screen name="Error" component={WebErrorScreen} />
             </Stack.Navigator>
         </NavigationContainer>

@@ -90,7 +90,7 @@ export const HomeScreen = () => {
 
         {properties.length > 0 ? (
           properties.map((property) => (
-            <PropertyCard key={property.propertyId} property={property} />
+            <PropertyCard key={property.id} property={property} />
           ))
         ) : (
           <View style={styles.emptyContainer}>
