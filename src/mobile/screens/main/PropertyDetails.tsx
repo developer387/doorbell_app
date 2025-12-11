@@ -13,11 +13,14 @@ import { type ChipItem, FilterChips, Loading } from '@/components';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
 import { useGetUserProperty } from '@/hooks';
 import * as Clipboard from 'expo-clipboard';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { BottomSheet, Input, Button } from '@/components';
-import { ChevronRight, Copy, X } from 'lucide-react-native';
+import { ChevronRight, Copy, X, User, Clock } from 'lucide-react-native';
 import { Alert } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import type { Guest } from '@/types/Property';
+
 
 type PropertyDetailsRouteProp = RouteProp<MainStackParamList, 'PropertyDetails'>;
 
@@ -80,6 +83,83 @@ export const PropertyDetails = () => {
   const [editLockName, setEditLockName] = useState('');
   const [selectedLockId, setSelectedLockId] = useState<string | null>(null);
   const [isSavingLockName, setIsSavingLockName] = useState(false);
+
+  // Guest State
+  const [isAddGuestSheetVisible, setIsAddGuestSheetVisible] = useState(false);
+  const [newGuestName, setNewGuestName] = useState('');
+  const [newGuestAvatar, setNewGuestAvatar] = useState('avatar1');
+  const [newGuestStartTime, setNewGuestStartTime] = useState(new Date());
+  const [newGuestEndTime, setNewGuestEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000));
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [isSavingGuest, setIsSavingGuest] = useState(false);
+  const [createdGuest, setCreatedGuest] = useState<Guest | null>(null);
+  const [isGuestSuccessVisible, setIsGuestSuccessVisible] = useState(false);
+
+  const generatePin = () => Math.floor(1000 + Math.random() * 9000).toString();
+
+  const handleAddGuest = async () => {
+    if (!newGuestName.trim()) {
+      Alert.alert('Error', 'Please enter a guest name');
+      return;
+    }
+    if (!property?.id) return;
+
+    setIsSavingGuest(true);
+    try {
+      const pin = generatePin();
+      const newGuest: Guest = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newGuestName.trim(),
+        avatar: newGuestAvatar,
+        startTime: newGuestStartTime.toISOString(),
+        endTime: newGuestEndTime.toISOString(),
+        accessPin: pin,
+        createdAt: new Date().toISOString(),
+      };
+
+      const propertyRef = doc(db, 'properties', property.id);
+      await updateDoc(propertyRef, {
+        guests: arrayUnion(newGuest)
+      });
+
+      setCreatedGuest(newGuest);
+      setIsAddGuestSheetVisible(false);
+
+      // Reset form
+      setTimeout(() => {
+        setIsGuestSuccessVisible(true);
+        setNewGuestName('');
+        setNewGuestAvatar('avatar1');
+        setNewGuestStartTime(new Date());
+        setNewGuestEndTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      }, 500);
+
+    } catch (error) {
+      console.error('Error adding guest:', error);
+      Alert.alert('Error', 'Failed to add guest');
+    } finally {
+      setIsSavingGuest(false);
+    }
+  };
+
+  const handleRemoveGuest = async (guest: Guest) => {
+    if (!property?.id) return;
+    try {
+      const propertyRef = doc(db, 'properties', property.id);
+      await updateDoc(propertyRef, {
+        guests: arrayRemove(guest)
+      });
+    } catch (error) {
+      console.error('Error removing guest:', error);
+      Alert.alert('Error', 'Failed to remove guest');
+    }
+  };
+
+  const handleCopyGuestPin = async (pin: string) => {
+    await Clipboard.setStringAsync(pin);
+    Alert.alert('Success', 'PIN copied to clipboard');
+  };
 
   const handlePinChange = (text: string) => {
     if (/^\d*$/.test(text) && text.length <= 4) {
@@ -356,6 +436,7 @@ export const PropertyDetails = () => {
   const chips: ChipItem[] = [
     { label: 'Property Details', value: 'propertyDetails' },
     { label: 'Smart Locks', value: 'locks', count: property?.smartLocks?.length },
+    { label: 'Guests', value: 'guests', count: property?.guests?.length },
     { label: 'Requests', value: 'request', count: 1 },
   ];
   const [activeChip, setActiveChip] = useState(chips[0].value);
@@ -486,6 +567,58 @@ export const PropertyDetails = () => {
               </View>
             </View>
           )}
+        </ScrollView>
+      )}
+
+      {activeChip === 'guests' && (
+        <ScrollView style={styles.contentScroll}>
+          <View style={styles.sectionHeader}>
+            <Body weight="bolder">My Guests</Body>
+            <TouchableOpacity onPress={() => setIsAddGuestSheetVisible(true)}>
+              <Body variant="primary">+ Add Guest</Body>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.guestsContainer}>
+            {property?.guests && property.guests.length > 0 ? (
+              property.guests.map((guest) => (
+                <View key={guest.id} style={styles.guestCard}>
+                  <View style={styles.guestCardHeader}>
+                    <View style={styles.guestInfo}>
+                      <View style={[styles.avatarCircle, { backgroundColor: guest.avatar === 'avatar1' ? '#4CAF50' : guest.avatar === 'avatar2' ? '#FFC107' : guest.avatar === 'avatar3' ? '#2196F3' : '#E91E63' }]}>
+                        <User size={20} color="white" />
+                      </View>
+                      <Body weight="bold">{guest.name}</Body>
+                    </View>
+                    <TouchableOpacity onPress={() => handleRemoveGuest(guest)}>
+                      <SmallText variant="error">Remove</SmallText>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.guestTimeRow}>
+                    <SmallText variant="secondary">Start Time:</SmallText>
+                    <SmallText>{new Date(guest.startTime).toLocaleString()}</SmallText>
+                  </View>
+                  <View style={styles.guestTimeRow}>
+                    <SmallText variant="secondary">End Time:</SmallText>
+                    <SmallText>{new Date(guest.endTime).toLocaleString()}</SmallText>
+                  </View>
+
+                  <View style={styles.guestPinRow}>
+                    <TouchableOpacity style={styles.copyPinButton} onPress={() => handleCopyGuestPin(guest.accessPin)}>
+                      <Body variant="primary" style={{ textDecorationLine: 'underline' }}>Copy Access PIN</Body>
+                      <Copy size={16} color={colors.primary} />
+                    </TouchableOpacity>
+                    <Title>{guest.accessPin}</Title>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyGuests}>
+                <Body variant="secondary">No guests added yet</Body>
+              </View>
+            )}
+          </View>
         </ScrollView>
       )}
 
@@ -648,6 +781,138 @@ export const PropertyDetails = () => {
             style={styles.saveButton}
           />
         </View>
+      </BottomSheet>
+      {/* Add Guest Bottom Sheet */}
+      <BottomSheet
+        isVisible={isAddGuestSheetVisible}
+        onClose={() => setIsAddGuestSheetVisible(false)}
+        minHeight={600}
+      >
+        <ScrollView>
+          <View style={styles.sheetHeader}>
+            <Body weight="bolder">Add guest</Body>
+            <TouchableOpacity onPress={() => setIsAddGuestSheetVisible(false)}>
+              <X size={24} color={colors.dark} />
+            </TouchableOpacity>
+          </View>
+
+          <SmallText variant="secondary" style={{ marginBottom: 10 }}>Pick an Avatar for your guest</SmallText>
+          <View style={styles.avatarSelectionCmd}>
+            {['avatar1', 'avatar2', 'avatar3', 'avatar4'].map((avatar) => (
+              <TouchableOpacity
+                key={avatar}
+                style={[
+                  styles.avatarOption,
+                  process.env.NODE_ENV !== 'production' ? {} : {}, // Placeholder for lint
+                  newGuestAvatar === avatar && styles.selectedAvatar
+                ]}
+                onPress={() => setNewGuestAvatar(avatar)}
+              >
+                <View style={[styles.avatarCircleLarge, { backgroundColor: avatar === 'avatar1' ? '#4CAF50' : avatar === 'avatar2' ? '#FFC107' : avatar === 'avatar3' ? '#2196F3' : '#E91E63' }]}>
+                  <User size={30} color="white" />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Input
+            label="Guest name"
+            value={newGuestName}
+            onChangeText={setNewGuestName}
+            placeholder="Guest name (e.g Cleaner)"
+            maxLength={20}
+          />
+
+          <View style={styles.timePickerContainer}>
+            <View style={{ flex: 1 }}>
+              <Body weight="bold" style={{ marginBottom: 8 }}>Start time</Body>
+              <TouchableOpacity style={styles.timeInput} onPress={() => setShowStartTimePicker(true)}>
+                <Body>{newGuestStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Body>
+                <Clock size={16} color="#888888" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Body weight="bold" style={{ marginBottom: 8 }}>End time</Body>
+              <TouchableOpacity style={styles.timeInput} onPress={() => setShowEndTimePicker(true)}>
+                <Body>{newGuestEndTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Body>
+                <Clock size={16} color="#888888" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {showStartTimePicker && (
+            <DateTimePicker
+              value={newGuestStartTime}
+              mode="time"
+              onChange={(_, date) => {
+                setShowStartTimePicker(false);
+                if (date) setNewGuestStartTime(date);
+              }}
+            />
+          )}
+          {showEndTimePicker && (
+            <DateTimePicker
+              value={newGuestEndTime}
+              mode="time"
+              onChange={(event, date) => {
+                setShowEndTimePicker(false);
+                if (date) setNewGuestEndTime(date);
+              }}
+            />
+          )}
+
+          <Button
+            title="Save & Generate Access PIN"
+            onPress={handleAddGuest}
+            isLoading={isSavingGuest}
+            style={styles.saveButton}
+          />
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Guest Created Success Sheet */}
+      <BottomSheet
+        isVisible={isGuestSuccessVisible}
+        onClose={() => setIsGuestSuccessVisible(false)}
+        minHeight={450}
+      >
+        {createdGuest && (
+          <View style={styles.container}>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={[styles.avatarCircleLarge, { backgroundColor: createdGuest.avatar === 'avatar1' ? '#4CAF50' : createdGuest.avatar === 'avatar2' ? '#FFC107' : createdGuest.avatar === 'avatar3' ? '#2196F3' : '#E91E63' }]}>
+                <User size={40} color="white" />
+              </View>
+              <Title style={{ marginTop: 10, textAlign: 'center' }}>Guest created successfully</Title>
+            </View>
+
+            <View style={styles.guestCard}>
+              <Body weight="bold">{createdGuest.name}</Body>
+              <View style={styles.guestTimeRow}>
+                <SmallText variant="secondary">Start Time:</SmallText>
+                <SmallText>{new Date(createdGuest.startTime).toLocaleString()}</SmallText>
+              </View>
+              <View style={styles.guestTimeRow}>
+                <SmallText variant="secondary">End Time:</SmallText>
+                <SmallText>{new Date(createdGuest.endTime).toLocaleString()}</SmallText>
+              </View>
+            </View>
+
+            <View style={{ alignItems: 'center', marginVertical: 20 }}>
+              <Body>Generated Access PIN:</Body>
+              <Title style={{ fontSize: 40, marginVertical: 10 }}>{createdGuest.accessPin}</Title>
+              <TouchableOpacity style={styles.copyPinButton} onPress={() => handleCopyGuestPin(createdGuest.accessPin)}>
+                <Body variant="primary" style={{ textDecorationLine: 'underline' }}>Copy Access PIN</Body>
+                <Copy size={20} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <Button
+              title="View Guest"
+              onPress={() => setIsGuestSuccessVisible(false)}
+              style={styles.saveButton}
+            />
+          </View>
+        )}
       </BottomSheet>
     </View>
   );
@@ -856,5 +1121,95 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     width: '100%',
+  },
+  // Guest Styles
+  guestsContainer: {
+    paddingBottom: 20
+  },
+  guestCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  guestCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: 12
+  },
+  guestInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  avatarCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  avatarCircleLarge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  guestTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6
+  },
+  guestPinRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 8
+  },
+  emptyGuests: {
+    alignItems: 'center',
+    padding: 30
+  },
+  avatarSelectionCmd: {
+    flexDirection: 'row',
+    gap: 15,
+    marginBottom: 20
+  },
+  avatarOption: {
+    padding: 2,
+    borderRadius: 35
+  },
+  selectedAvatar: {
+    borderWidth: 2,
+    borderColor: colors.primary
+  },
+  timePickerContainer: {
+    flexDirection: 'row',
+    gap: 15,
+    marginTop: 15,
+    marginBottom: 20
+  },
+  timeInput: {
+    backgroundColor: '#F1F5F9',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  copyPinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
   }
 })

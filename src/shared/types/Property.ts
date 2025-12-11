@@ -12,6 +12,16 @@ export interface Location {
   [key: string]: string | number;
 }
 
+export interface Guest {
+  id: string;
+  name: string;
+  avatar: string; // 'avatar1' | 'avatar2' | 'avatar3' | 'avatar4'
+  startTime: string; // ISO string
+  endTime: string; // ISO string
+  accessPin: string;
+  createdAt: string;
+}
+
 export interface Property {
   address: string;
   category: string;
@@ -25,4 +35,5 @@ export interface Property {
   qrCodeUUID?: string; // UUID from QR code
   id?: string; // Firestore Document ID
   allowGuest?: boolean; // Controls guest access permission
+  guests?: Guest[];
 }
