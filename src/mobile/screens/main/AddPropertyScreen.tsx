@@ -18,6 +18,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { useAuth } from '@/context/UserContext';
+import { addDoc, collection } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 import { generateUUID, reverseGeocode } from '@/utils/helpers';
 
@@ -154,13 +156,18 @@ export const AddPropertyScreen = () => {
         userId: user.uid,
         createdAt: new Date().toISOString(),
         qrCodeUUID: propertyId, // Store the UUID from QR code
+        allowGuest: false, // Default to false when property is created
       };
 
-      navigation.navigate('SetPropertyPin', { propertyData });
+      // Save property directly to Firestore
+      await addDoc(collection(db, 'properties'), propertyData);
+
+      // Navigate directly to LinkSmartLock screen
+      navigation.navigate('LinkSmartLock', { propertyId: id });
 
     } catch (error) {
-      console.error('Error preparing property:', error);
-      Alert.alert('Error', 'Failed to proceed. Please try again.');
+      console.error('Error saving property:', error);
+      Alert.alert('Error', 'Failed to save property. Please try again.');
     }
   };
 

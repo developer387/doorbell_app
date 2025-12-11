@@ -24,4 +24,5 @@ export interface Property {
   pinCode?: string;
   qrCodeUUID?: string; // UUID from QR code
   id?: string; // Firestore Document ID
+  allowGuest?: boolean; // Controls guest access permission
 }

@@ -39,7 +39,7 @@ const DetailRow = ({ label, value = '', isStatus = false }: { label: string; val
 export const PropertyDetails = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  const [isGuestAccessEnabled, setIsGuestAccessEnabled] = useState(true);
+  const [isGuestAccessEnabled, setIsGuestAccessEnabled] = useState(false);
   const route = useRoute<PropertyDetailsRouteProp>();
   const { propertyId } = route.params;
 
@@ -52,6 +52,13 @@ export const PropertyDetails = () => {
       setCurrentPin(property.pinCode);
     }
   }, [property?.pinCode]);
+
+  // Update isGuestAccessEnabled when property loads
+  React.useEffect(() => {
+    if (property?.allowGuest !== undefined) {
+      setIsGuestAccessEnabled(property.allowGuest);
+    }
+  }, [property?.allowGuest]);
 
   // PIN Code State
   const [pinCode, setPinCode] = useState('');
@@ -223,6 +230,22 @@ export const PropertyDetails = () => {
     }
   };
 
+  // Handle guest access toggle
+  const handleGuestAccessToggle = async (value: boolean) => {
+    setIsGuestAccessEnabled(value);
+    if (!property?.id) return;
+
+    try {
+      const propertyRef = doc(db, 'properties', property.id);
+      await updateDoc(propertyRef, { allowGuest: value });
+    } catch (error) {
+      console.error('Error updating guest access:', error);
+      Alert.alert('Error', 'Failed to update guest access setting');
+      // Revert the toggle on error
+      setIsGuestAccessEnabled(!value);
+    }
+  };
+
   // Lock states management
   const [lockStates, setLockStates] = useState<LockState[]>([]);
 
@@ -371,7 +394,7 @@ export const PropertyDetails = () => {
               <DetailRow label="Category" value={property?.category} />
               <DetailRow label="Property Name" value={property?.propertyName} />
               <DetailRow label="Address" value={property?.address} />
-              <DetailRow label="Status" value="Active" isStatus={true} />
+              <DetailRow label="Status" value={isGuestAccessEnabled ? "Active" : "In Active"} isStatus={isGuestAccessEnabled} />
             </View>
           </View>
           <View style={styles.toggleSection}>
@@ -380,7 +403,7 @@ export const PropertyDetails = () => {
               <Body variant="secondary">Property is now available to any guest</Body>
             </View>
             <Switch
-              onValueChange={setIsGuestAccessEnabled}
+              onValueChange={handleGuestAccessToggle}
               value={isGuestAccessEnabled}
               trackColor={{ false: '#767577', true: '#4CAF50' }}
               thumbColor={isGuestAccessEnabled ? '#f4f3f4' : '#f4f3f4'}

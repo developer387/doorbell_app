@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
-import { SettingsScreen, AddPropertyScreen, LinkSmartLockScreen, ListLocksScreen, SetPropertyPinScreen } from '@screens/main';
+import { SettingsScreen, AddPropertyScreen, LinkSmartLockScreen, ListLocksScreen, NotificationsScreen } from '@screens/main';
 import { TabNavigator } from './TabNavigator';
 import { COLORS } from '@constants/theme';
 import { PropertyDetails } from '@screens/main/PropertyDetails';
@@ -67,8 +67,8 @@ export const MainNavigator: React.FC = () => {
         }}
       />
       <Stack.Screen
-        name="SetPropertyPin"
-        component={SetPropertyPinScreen}
+        name="Notifications"
+        component={NotificationsScreen}
         options={{
           headerShown: false,
         }}

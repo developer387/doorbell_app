@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 
 import { Search, Bell, Plus } from 'lucide-react-native';
@@ -12,6 +12,8 @@ import type { MainStackParamList } from '@navigation-types';
 import { useUserProperties } from '@/hooks/useUserProperties';
 import { Loading, PropertyCard } from '@/components';
 import type { ChipItem } from '@/components/ScrollableChipList';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
@@ -24,8 +26,25 @@ const chips: ChipItem[] = [
 export const HomeScreen = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();
-
   const { properties, loading } = useUserProperties();
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Listen to pending guest requests for this user
+    const q = query(
+      collection(db, 'guestRequests'),
+      where('userId', '==', user.uid),
+      where('status', '==', 'pending')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotificationCount(snapshot.size);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   if (loading) return <Loading />
 
@@ -39,8 +58,18 @@ export const HomeScreen = () => {
           <Heading weight="bold" variant="black">
             Welcome, {user?.displayName?.split(' ')[0] ?? 'User'}
           </Heading>
-          <TouchableOpacity style={styles.bell}>
+          <TouchableOpacity
+            style={styles.bell}
+            onPress={() => navigation.navigate('Notifications')}
+          >
             <Bell size={22} color="#0f172a" />
+            {notificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <MediumText variant="white" style={styles.notificationText}>
+                  {notificationCount}
+                </MediumText>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -107,6 +136,25 @@ const styles = StyleSheet.create({
 
   bell: {
     padding: 6,
+    position: 'relative',
+  },
+
+  notificationBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: colors.error,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+
+  notificationText: {
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 
   searchContainer: {
