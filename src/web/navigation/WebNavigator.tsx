@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import WebScannerScreen from '../screens/WebScannerScreen';
 import WebGuestScreen from '../screens/WebGuestScreen';
+import WebErrorScreen from '../screens/WebErrorScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -12,6 +13,7 @@ const linking = {
         screens: {
             Scanner: '',
             Guest: 'guests',
+            Error: 'error',
         },
     },
 };
@@ -22,6 +24,7 @@ export default function WebNavigator() {
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="Scanner" component={WebScannerScreen} />
                 <Stack.Screen name="Guest" component={WebGuestScreen} />
+                <Stack.Screen name="Error" component={WebErrorScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

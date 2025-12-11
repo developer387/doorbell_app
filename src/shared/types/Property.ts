@@ -22,5 +22,6 @@ export interface Property {
   smartLocks: SmartLock[];
   userId: string;
   pinCode?: string;
+  qrCodeUUID?: string; // UUID from QR code
   id?: string; // Firestore Document ID
 }

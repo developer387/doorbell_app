@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { PropertyService } from '@/services/property.service';
 
 export default function WebScannerScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
     const [facing] = useState<CameraType>('back');
     const [torch, setTorch] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const navigation = useNavigation<any>();
 
     if (!permission) {
@@ -29,17 +31,37 @@ export default function WebScannerScreen() {
         );
     }
 
-    const handleBarCodeScanned = ({ data }: { data: string }) => {
+    const handleBarCodeScanned = async ({ data }: { data: string }) => {
         if (scanned) return;
         setScanned(true);
-        // Ideally, we validate the QR code format. For now, we simulate navigation to the Guest Screen.
-        // Assuming the QR code contains a property ID or similar. 
-        // For this demo, we'll just navigate to the 'Guest' screen.
-        console.log("Scanned:", data);
-        navigation.navigate('Guest', { data });
+        setIsLoading(true);
 
-        // Reset scanner after a delay if needed, or rely on navigation
-        setTimeout(() => setScanned(false), 2000);
+        try {
+            // Extract UUID from scanned QR code
+            const uuid = data.trim();
+            console.log("Scanned UUID:", uuid);
+
+            // Look up property by UUID
+            const property = await PropertyService.findByQRCodeUUID(uuid);
+
+            if (property) {
+                // Property found - navigate to Guest screen (Ring doorbell)
+                console.log("Property found:", property);
+                navigation.navigate('Guest', { property });
+            } else {
+                // Property not found - navigate to Error screen
+                console.log("Property not found for UUID:", uuid);
+                navigation.navigate('Error');
+            }
+        } catch (error) {
+            console.error("Error looking up property:", error);
+            // Navigate to error screen on exception
+            navigation.navigate('Error');
+        } finally {
+            setIsLoading(false);
+            // Reset scanner after a delay
+            setTimeout(() => setScanned(false), 2000);
+        }
     };
 
     const toggleTorch = () => {
@@ -82,12 +104,19 @@ export default function WebScannerScreen() {
                     </View>
 
                     <View style={styles.bottomOverlay}>
-                        <TouchableOpacity style={styles.flashButton} onPress={toggleTorch}>
-                            <View style={styles.flashIconContainer}>
-                                <Ionicons name={torch ? "flash" : "flash-off"} size={24} color="white" />
+                        {isLoading ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color="white" />
+                                <Text style={styles.loadingText}>Looking up property...</Text>
                             </View>
-                            <Text style={styles.flashText}>Turn {torch ? "OFF" : "ON"} Flash</Text>
-                        </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity style={styles.flashButton} onPress={toggleTorch}>
+                                <View style={styles.flashIconContainer}>
+                                    <Ionicons name={torch ? "flash" : "flash-off"} size={24} color="white" />
+                                </View>
+                                <Text style={styles.flashText}>Turn {torch ? "OFF" : "ON"} Flash</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </View>
             </CameraView>
@@ -230,5 +259,14 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 14,
         fontWeight: '600',
-    }
+    },
+    loadingContainer: {
+        alignItems: 'center',
+    },
+    loadingText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
+        marginTop: 12,
+    },
 });

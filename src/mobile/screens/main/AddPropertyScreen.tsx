@@ -55,11 +55,12 @@ export const AddPropertyScreen = () => {
     setCameraActive(true);
   };
 
-  const handleBarCodeScanned = () => {
+  const handleBarCodeScanned = ({ data }: { data: string }) => {
     setScanned(true);
 
-    // Auto-generate UUID
-    const uuid = generateUUID();
+    // Extract UUID from scanned QR code
+    // Assuming the QR code contains just the UUID or in a specific format
+    const uuid = data.trim();
     setPropertyId(uuid);
 
     setCameraActive(false);
@@ -152,6 +153,7 @@ export const AddPropertyScreen = () => {
         smartLocks: null,
         userId: user.uid,
         createdAt: new Date().toISOString(),
+        qrCodeUUID: propertyId, // Store the UUID from QR code
       };
 
       navigation.navigate('SetPropertyPin', { propertyData });

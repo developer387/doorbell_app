@@ -2,12 +2,19 @@ import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { House, Bell } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { Property } from '@/types/Property';
+
+type WebGuestScreenRouteProp = RouteProp<{ params: { property: Property } }, 'params'>;
 
 export default function WebGuestScreen() {
+    const route = useRoute<WebGuestScreenRouteProp>();
+    const { property } = route.params;
+
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const [isRinging, setIsRinging] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
-    const cameraRef = useRef<CameraView>(null); // Use CameraView type
+    const cameraRef = useRef<CameraView>(null);
 
     useEffect(() => {
         const startPulse = () => {
@@ -66,8 +73,8 @@ export default function WebGuestScreen() {
                 <View style={styles.houseIconContainer}>
                     <House size={64} color="#e67e22" fill="#e67e22" />
                 </View>
-                <Text style={styles.houseName}>Family House</Text>
-                <Text style={styles.address}>C.29 Sur 3117, Benito Julrez, 7240..</Text>
+                <Text style={styles.houseName}>{property.propertyName || 'Property'}</Text>
+                <Text style={styles.address}>{property.address || 'No address available'}</Text>
             </View>
 
             {/* Ring Button */}
