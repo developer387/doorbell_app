@@ -20,7 +20,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#007AFF"
       },
-      "package": "com.doorbell.app"
+      "package": "com.doorbell.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,8 +43,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "91f8bf99-1b5c-42b7-a235-14c2318bfc7b"
+        "projectId": "b264a3ec-0712-4ea2-a5c5-a353f7dbbe6a"
       }
-    }
+    },
+    "owner": "tokunboelegbe"
   }
 }
