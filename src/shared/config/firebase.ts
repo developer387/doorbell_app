@@ -7,12 +7,12 @@ import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 // TODO: Replace with your actual Firebase configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyA27g83mAIEBr5sz7vn0D-4J-Dy4OZtPvg",
-    authDomain: "doorbell-app-toks.firebaseapp.com",
-    projectId: "doorbell-app-toks",
-    storageBucket: "doorbell-app-toks.firebasestorage.app",
-    messagingSenderId: "142583077920",
-    appId: "1:142583077920:web:5f758d0e386c2aa18e3045"
+    apiKey: "AIzaSyDDl_KK66dksJ4cdY73LkN0rbjrD_AAox8",
+    authDomain: "doorbell-165ac.firebaseapp.com",
+    projectId: "doorbell-165ac",
+    storageBucket: "doorbell-165ac.firebasestorage.app",
+    messagingSenderId: "507464378158",
+    appId: "1:507464378158:web:4830dc3fea451df24bbcbf"
 };
 
 let app: FirebaseApp;
@@ -26,13 +26,10 @@ if (!getApps().length) {
 }
 
 try {
-    // Initialize Auth with AsyncStorage persistence for React Native
     auth = initializeAuth(app, {
         persistence: getReactNativePersistence(ReactNativeAsyncStorage)
     });
 } catch (e) {
-    // If auth is already initialized, get the existing instance
-    // This handles hot reload scenarios
     auth = getAuth(app);
 }
 
