@@ -86,6 +86,14 @@ export const NotificationsScreen = () => {
         setPlayingVideo(playingVideo === requestId ? null : requestId);
     };
 
+    const handleRecordVideo = (request: GuestRequest) => {
+        navigation.navigate('CameraRecording', {
+            requestId: request.id,
+            guestId: request.guestId,
+            propertyName: request.propertyName,
+        });
+    };
+
     const formatDate = (timestamp: string) => {
         const date = new Date(timestamp);
         return date.toLocaleDateString('en-US', {
@@ -196,6 +204,12 @@ export const NotificationsScreen = () => {
 
                                             {request.status === 'pending' && (
                                                 <View style={styles.actionButtons}>
+                                                    <TouchableOpacity
+                                                        style={styles.recordButton}
+                                                        onPress={() => handleRecordVideo(request)}
+                                                    >
+                                                        <MediumText variant="white" weight="bold">Record Video</MediumText>
+                                                    </TouchableOpacity>
                                                     <TouchableOpacity
                                                         style={styles.declineButton}
                                                         onPress={() => handleDecline(request.id)}
@@ -323,6 +337,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     callButton: {
+        flex: 1,
+        backgroundColor: colors.primary,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    recordButton: {
         flex: 1,
         backgroundColor: colors.primary,
         paddingVertical: 12,

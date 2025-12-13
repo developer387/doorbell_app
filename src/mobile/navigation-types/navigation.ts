@@ -25,6 +25,11 @@ export interface MainStackParamList extends ParamListBase {
         guestId: string;
         propertyName: string;
     };
+    CameraRecording: {
+        requestId: string;
+        guestId: string;
+        propertyName: string;
+    };
 }
 
 export type RootStackParamList = AuthStackParamList & MainStackParamList;

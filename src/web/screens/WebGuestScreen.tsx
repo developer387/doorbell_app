@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type Property } from '@/types/Property';
 import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
@@ -23,6 +24,8 @@ export default function WebGuestScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const [guestId, setGuestId] = useState<string>('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showSendButton, setShowSendButton] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
@@ -85,6 +88,27 @@ export default function WebGuestScreen() {
   }, [isRecording]);
 
   // -- Handlers (Original) --
+  const saveVideoToStorage = async (blob: Blob) => {
+    return new Promise<void>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          await AsyncStorage.setItem('temp_guest_video', base64data);
+          // Set the video URL for preview from the blob directly for immediate feedback
+          const url = URL.createObjectURL(blob);
+          setRecordedVideoUrl(url);
+          resolve();
+        } catch (e) {
+          console.error('Failed to save video to storage', e);
+          reject(e);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const startWebRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -112,26 +136,36 @@ export default function WebGuestScreen() {
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
+        if (videoChunksRef.current.length > 0) {
+          const blobType = videoChunksRef.current[0]?.type || 'video/webm';
+          const videoBlob = new Blob(videoChunksRef.current, { type: blobType });
+          await saveVideoToStorage(videoBlob);
+        }
+        setShowSendButton(true);
       };
 
       mediaRecorder.start();
       mediaRecorderRef.current = mediaRecorder;
+      // Start 5 second timer logic immediately upon recording start
     } catch (error) {
       console.error('Error starting web recording:', error);
       Alert.alert('Error', 'Failed to access camera. Please ensure camera permissions are granted.');
+      setIsRecording(false);
     }
   };
 
   const stopRecording = () => {
-    if (Platform.OS === 'web' && mediaRecorderRef.current) {
+    if (Platform.OS === 'web' && mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
+    } else {
+      setShowSendButton(true);
     }
-    setShowSendButton(true);
+    setIsRecording(false);
   };
 
-  const handleStartRecording = async () => {
+  const handleStartPreview = async () => {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
@@ -141,7 +175,17 @@ export default function WebGuestScreen() {
     }
     const newGuestId = generateGuestId();
     setGuestId(newGuestId);
+    setIsPreviewing(true);
+    setRecordedVideoUrl(null);
+  };
+
+  const handleStartRecording = async () => {
+    setIsPreviewing(false);
     setIsRecording(true);
+    setIsPreviewing(false);
+    setIsRecording(true);
+    // Let's stick to the countdown going up logic or down. The effect uses going up.
+    // Actually the user said "start recording for 5 secs". I'll reset time to 0 and let the effect run.
     setRecordingTime(0);
     setShowSendButton(false);
 
@@ -149,6 +193,8 @@ export default function WebGuestScreen() {
       await startWebRecording();
     }
   };
+
+  // Removed previous handleStartRecording in favor of split methods above, ensuring no duplicates.
 
   const handleSend = async () => {
     try {
@@ -188,10 +234,19 @@ export default function WebGuestScreen() {
     }
   };
 
-  const handleRetake = () => {
+  const handleRetake = async () => {
+    if (recordedVideoUrl) {
+      URL.revokeObjectURL(recordedVideoUrl);
+      setRecordedVideoUrl(null);
+    }
+    await AsyncStorage.removeItem('temp_guest_video');
+
     setIsRecording(false);
+    setIsPreviewing(false);
     setShowSendButton(false);
     setRecordingTime(0);
+    setGuestId(''); // Reset to allow starting over
+    videoChunksRef.current = [];
   };
 
   // -- Handlers (New PIN Flow) --
@@ -399,7 +454,7 @@ export default function WebGuestScreen() {
         </View>
       )}
 
-      {!isRecording && !guestId && (
+      {!isRecording && !isPreviewing && !guestId && (
         <>
           <View style={styles.infoContainer}>
             <View style={styles.houseIconContainer}>
@@ -409,36 +464,53 @@ export default function WebGuestScreen() {
             <Text style={styles.address}>{property.address || 'No address available'}</Text>
           </View>
 
-          <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartRecording}>
+          <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartPreview}>
             <Text style={styles.ringButtonText}>Ring DoorBell</Text>
           </TouchableOpacity>
         </>
       )}
 
+      {/* Preview/Recording Center Container */}
       <View style={styles.centerContainer}>
-        {isRecording || showSendButton ? (
+        {isPreviewing || isRecording || showSendButton ? (
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraContainer}>
               {Platform.OS === 'web' ? (
-                <video
-                  autoPlay
-                  muted
-                  playsInline
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                  }}
-                  ref={(video) => {
-                    if (video && isRecording) {
-                      navigator.mediaDevices
-                        .getUserMedia({ video: { facingMode: 'user' }, audio: false })
-                        .then((stream) => {
-                          video.srcObject = stream;
-                        });
-                    }
-                  }}
-                />
+                showSendButton && recordedVideoUrl ? (
+                  // Review Mode
+                  <video
+                    src={recordedVideoUrl}
+                    controls
+                    playsInline
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                  />
+                ) : (
+                  // Live Camera (Preview or Recording)
+                  <video
+                    autoPlay
+                    muted
+                    playsInline
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                    ref={(video) => {
+                      if (video && (isPreviewing || isRecording)) {
+                        navigator.mediaDevices
+                          .getUserMedia({ video: { facingMode: 'user' }, audio: false })
+                          .then((stream) => {
+                            video.srcObject = stream;
+                          })
+                          .catch((err) => console.error('Camera preview error:', err));
+                      }
+                    }}
+                  />
+                )
               ) : permission?.granted ? (
                 <CameraView
                   ref={cameraRef}
@@ -450,12 +522,24 @@ export default function WebGuestScreen() {
                   <Text style={{ color: 'white' }}>Camera Preview...</Text>
                 </View>
               )}
-              <View style={styles.flashIndicator}>
-                <View style={styles.flashIcon}>
-                  <Text style={styles.flashIconText}>⚡</Text>
+
+              {/* Flash/Icon Indicator */}
+              {isRecording && (
+                <View style={styles.flashIndicator}>
+                  <View style={styles.flashIcon}>
+                    <Text style={styles.flashIconText}>⚡</Text>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
+
+            {/* Start Recording Button Overlay */}
+            {isPreviewing && (
+              <TouchableOpacity style={styles.startRecordingButtonOverlay} onPress={handleStartRecording}>
+                <View style={styles.recordButtonInner} />
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.cameraHint}>Make sure your face is visible</Text>
           </View>
         ) : null}
@@ -480,7 +564,7 @@ export default function WebGuestScreen() {
         </View>
       )}
 
-      {!isRecording && !guestId && (
+      {!isRecording && !isPreviewing && !guestId && (
         <View style={styles.footer}>
           <Text style={styles.disclaimer}>
             This triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
@@ -798,6 +882,25 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  startRecordingButtonOverlay: {
+    position: 'absolute',
+    bottom: 40,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+    zIndex: 20,
+  },
+  recordButtonInner: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#ff4444',
   },
   waitingSpinner: {
     fontSize: 16,
