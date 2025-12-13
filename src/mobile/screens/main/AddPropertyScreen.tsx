@@ -84,11 +84,23 @@ export const AddPropertyScreen = () => {
         return;
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Highest,
-        timeInterval: 5000,
-        distanceInterval: 0,
-      });
+      let currentLocation;
+      try {
+        // Try high accuracy first
+        currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Highest,
+        });
+      } catch (e) {
+        console.log('High accuracy location failed, trying balanced:', e);
+        // Fallback to balanced if high accuracy fails (e.g. indoors)
+        currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      }
+
+      if (!currentLocation) {
+        throw new Error('Could not retrieve location');
+      }
 
       const { latitude, longitude } = currentLocation.coords;
 
