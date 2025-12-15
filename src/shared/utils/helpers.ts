@@ -1,5 +1,3 @@
-import * as Location from 'expo-location';
-
 /**
  * Generate a UUID v4
  * This is a simple implementation for mobile use
@@ -14,34 +12,21 @@ export const generateUUID = (): string => {
 
 /**
  * Reverse geocode coordinates to get address
- * Uses expo-location's built-in reverse geocoding for reliability
+ * Uses Google Geocoding API via HTTP request
  */
 export const reverseGeocode = async (
     latitude: number,
     longitude: number
 ): Promise<string> => {
     try {
-        const result = await Location.reverseGeocodeAsync({
-            latitude,
-            longitude,
-        });
+        const apiKey = 'AIzaSyBgCI4ytUMkGRq70mYAnC8febOjz7UyJDc';
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`;
 
-        if (result && result.length > 0) {
-            const address = result[0];
+        const response = await fetch(url);
+        const data = await response.json();
 
-            // Build a formatted address string from the components
-            const parts: string[] = [
-                address.streetNumber,
-                address.street,
-                address.city,
-                address.region,
-                address.postalCode,
-                address.country,
-            ].filter((part): part is string => Boolean(part)); // Remove null/undefined values
-
-            if (parts.length > 0) {
-                return parts.join(', ');
-            }
+        if (data.results && data.results.length > 0) {
+            return data.results[0].formatted_address;
         }
 
         // Fallback to coordinates if no address found
