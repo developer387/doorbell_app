@@ -2,18 +2,13 @@ import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type Property } from '@/types/Property';
-import { addDoc, collection, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/config/firebase';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
-
-// TODO: Replace with your actual Cloudinary credentials
-// See CLOUDINARY_SETUP.md for instructions
-// TODO: Replace with your actual Cloudinary credentials
-// See CLOUDINARY_SETUP.md for instructions
-const CLOUDINARY_CLOUD_NAME = "ditqzfzbj";
-const CLOUDINARY_UPLOAD_PRESET = "guest_doorbell_videos"; // Keep same preset or change if desired, strictly it's "guest_doorbell_photos" now but preset name doesn't matter if unsigned allows images.
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -28,10 +23,11 @@ export default function WebGuestScreen() {
   // -- Original State --
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const [guestId, setGuestId] = useState<string>('');
+  const [isRecording, setIsRecording] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [showSendButton, setShowSendButton] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -55,10 +51,10 @@ export default function WebGuestScreen() {
   const pin4Ref = useRef<any>(null);
 
   // -- Refs --
-  // -- Refs --
   const cameraRef = useRef<CameraView>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
 
   // -- Effects (Original) --
   useEffect(() => {
@@ -71,10 +67,103 @@ export default function WebGuestScreen() {
     startPulse();
   }, []);
 
-
+  useEffect(() => {
+    if (isRecording) {
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((prev) => {
+          const newTime = prev + 1;
+          if (newTime >= 5) {
+            stopRecording();
+            if (recordingTimerRef.current) {
+              clearInterval(recordingTimerRef.current);
+            }
+          }
+          return newTime;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+  }, [isRecording]);
 
   // -- Handlers (Original) --
-  // Removed video recording handlers
+  const saveVideoToStorage = async (blob: Blob) => {
+    return new Promise<void>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          await AsyncStorage.setItem('temp_guest_video', base64data);
+          // Set the video URL for preview from the blob directly for immediate feedback
+          const url = URL.createObjectURL(blob);
+          setRecordedVideoUrl(url);
+          resolve();
+        } catch (e) {
+          console.error('Failed to save video to storage', e);
+          reject(e);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const startWebRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: true
+      });
+
+      const mimeTypes = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm', 'video/ogg'];
+      let selectedMimeType = '';
+      for (const type of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          selectedMimeType = type;
+          break;
+        }
+      }
+
+      const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
+
+      videoChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          videoChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+        if (videoChunksRef.current.length > 0) {
+          const blobType = videoChunksRef.current[0]?.type || 'video/webm';
+          const videoBlob = new Blob(videoChunksRef.current, { type: blobType });
+          await saveVideoToStorage(videoBlob);
+        }
+        setShowSendButton(true);
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      // Start 5 second timer logic immediately upon recording start
+    } catch (error) {
+      console.error('Error starting web recording:', error);
+      Alert.alert('Error', 'Failed to access camera. Please ensure camera permissions are granted.');
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (Platform.OS === 'web' && mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    } else {
+      setShowSendButton(true);
+    }
+    setIsRecording(false);
+  };
 
   const handleStartPreview = async () => {
     if (!permission?.granted) {
@@ -87,125 +176,77 @@ export default function WebGuestScreen() {
     const newGuestId = generateGuestId();
     setGuestId(newGuestId);
     setIsPreviewing(true);
-    setCapturedImage(null);
+    setRecordedVideoUrl(null);
   };
 
-  const handleTakePhoto = () => {
-    if (Platform.OS === 'web' && videoRef.current) {
-      const video = videoRef.current;
-      const canvas = document.createElement('canvas'); // Create temp canvas or use ref
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setCapturedImage(dataUrl);
-        setShowSendButton(true);
-        setIsPreviewing(false);
+  const handleStartRecording = async () => {
+    setIsPreviewing(false);
+    setIsRecording(true);
+    setIsPreviewing(false);
+    setIsRecording(true);
+    // Let's stick to the countdown going up logic or down. The effect uses going up.
+    // Actually the user said "start recording for 5 secs". I'll reset time to 0 and let the effect run.
+    setRecordingTime(0);
+    setShowSendButton(false);
 
-        // Stop stream tracks
-        if (video.srcObject) {
-          const stream = video.srcObject as MediaStream;
-          stream.getTracks().forEach(track => track.stop());
-        }
-      }
+    if (Platform.OS === 'web') {
+      await startWebRecording();
     }
-    // Mobile logic would use cameraRef.current.takePictureAsync()
   };
 
   // Removed previous handleStartRecording in favor of split methods above, ensuring no duplicates.
 
   const handleSend = async () => {
-    if (isSending) return;
-    setIsSending(true);
-
     try {
-      if (!capturedImage) {
-        alert('No photo found. Please retake.');
-        setIsSending(false);
-        return;
-      }
-
       let downloadUrl = '';
-      try {
-        const formData = new FormData();
-        formData.append('file', capturedImage); // Cloudinary accepts data URI directly
-        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-        formData.append('public_id', `guest_photos/${guestId}_${Date.now()}`);
+      if (videoChunksRef.current.length > 0) {
+        const blobType = videoChunksRef.current[0]?.type || 'video/webm';
+        const extension = blobType.includes('mp4') ? 'mp4' : 'webm';
+        const videoBlob = new Blob(videoChunksRef.current, { type: blobType });
 
-        // Note: resource_type is 'image' for photos
-        const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-
-        console.log('Starting photo upload to Cloudinary...');
-
-        const uploadPromise = fetch(uploadUrl, {
-          method: 'POST',
-          body: formData,
-        });
-
-        const timeoutPromise = new Promise<Response>((_, reject) =>
-          setTimeout(() => reject(new Error('Upload timed out. Check your Network.')), 20000)
-        );
-
-        const response = await Promise.race([uploadPromise, timeoutPromise]);
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error?.message || 'Cloudinary upload failed');
+        try {
+          const videoRef = ref(storage, `guest-videos/${guestId}.${extension}`);
+          await uploadBytes(videoRef, videoBlob);
+          downloadUrl = await getDownloadURL(videoRef);
+        } catch (uploadError) {
+          console.error('Error uploading video:', uploadError);
+          alert('Failed to upload video. Please try again.');
+          return;
         }
-
-        const data = await response.json();
-        downloadUrl = data.secure_url;
-
-        console.log('Cloudinary returned URI:', downloadUrl);
-      } catch (uploadError: any) {
-        console.error('Error uploading photo:', uploadError);
-        alert(`Failed to upload photo. ${uploadError.message || ''}`);
-        setIsSending(false);
-        return;
-      }
-
-      const timestamp = new Date().toISOString();
-
-      if (property.id) {
-        const propertyRef = doc(db, 'properties', property.id);
-        await updateDoc(propertyRef, {
-          guestRequests: arrayUnion({
-            uri: downloadUrl,
-            guestId: guestId,
-            createdAt: timestamp,
-            type: 'image' // Helpful to distinguish
-          })
-        });
       }
 
       await addDoc(collection(db, 'guestRequests'), {
         guestId,
         propertyId: property.propertyId,
         propertyName: property.propertyName || 'Property',
-        timestamp: timestamp,
+        timestamp: new Date().toISOString(),
         status: 'pending',
         userId: property.userId,
-        photoUrl: downloadUrl, // Changed from videoUrl
-        type: 'image'
+        videoUrl: downloadUrl,
       });
 
-      setCapturedImage(null);
+      // Removed setRequestId as it was unused and removed from state
+      setIsRecording(false);
       setIsWaiting(true);
     } catch (error) {
       console.error('Error sending guest request:', error);
       alert('Failed to send request. Please try again.');
-    } finally {
-      setIsSending(false);
     }
   };
 
-  const handleRetake = () => {
-    setCapturedImage(null);
+  const handleRetake = async () => {
+    if (recordedVideoUrl) {
+      URL.revokeObjectURL(recordedVideoUrl);
+      setRecordedVideoUrl(null);
+    }
+    await AsyncStorage.removeItem('temp_guest_video');
+
+    setIsRecording(false);
     setIsPreviewing(false);
     setShowSendButton(false);
-    setGuestId('');
+    setRecordingTime(0);
+    setGuestId(''); // Reset to allow starting over
+    videoChunksRef.current = [];
   };
 
   // -- Handlers (New PIN Flow) --
@@ -413,7 +454,7 @@ export default function WebGuestScreen() {
         </View>
       )}
 
-      {!isPreviewing && !guestId && (
+      {!isRecording && !isPreviewing && !guestId && (
         <>
           <View style={styles.infoContainer}>
             <View style={styles.houseIconContainer}>
@@ -431,23 +472,24 @@ export default function WebGuestScreen() {
 
       {/* Preview/Recording Center Container */}
       <View style={styles.centerContainer}>
-        {isPreviewing || showSendButton ? (
+        {isPreviewing || isRecording || showSendButton ? (
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraContainer}>
               {Platform.OS === 'web' ? (
-                showSendButton && capturedImage ? (
+                showSendButton && recordedVideoUrl ? (
                   // Review Mode
-                  <img
-                    src={capturedImage}
+                  <video
+                    src={recordedVideoUrl}
+                    controls
+                    playsInline
                     style={{
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      transform: 'scaleX(-1)' // Mirror toggle if standard selfie
                     }}
                   />
                 ) : (
-                  // Live Camera (Preview)
+                  // Live Camera (Preview or Recording)
                   <video
                     autoPlay
                     muted
@@ -456,14 +498,9 @@ export default function WebGuestScreen() {
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      transform: 'scaleX(-1)'
                     }}
                     ref={(video) => {
-                      // Attach ref
-                      // @ts-ignore
-                      videoRef.current = video;
-
-                      if (video && isPreviewing) {
+                      if (video && (isPreviewing || isRecording)) {
                         navigator.mediaDevices
                           .getUserMedia({ video: { facingMode: 'user' }, audio: false })
                           .then((stream) => {
@@ -496,11 +533,10 @@ export default function WebGuestScreen() {
               )}
             </View>
 
-            {/* Take Photo Button Overlay */}
+            {/* Start Recording Button Overlay */}
             {isPreviewing && (
-              <TouchableOpacity style={styles.startRecordingButtonOverlay} onPress={handleTakePhoto}>
+              <TouchableOpacity style={styles.startRecordingButtonOverlay} onPress={handleStartRecording}>
                 <View style={styles.recordButtonInner} />
-                {/* Could replace inner with Camera icon */}
               </TouchableOpacity>
             )}
 
@@ -509,21 +545,21 @@ export default function WebGuestScreen() {
         ) : null}
       </View>
 
-
+      {isRecording && !showSendButton && (
+        <View style={styles.recordingCounterContainer}>
+          <Text style={styles.recordingCounter}>{recordingTime}</Text>
+        </View>
+      )}
 
       {showSendButton && (
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity style={styles.retakeButton} onPress={handleRetake}>
             <RefreshCw size={16} color="#4ade80" />
-            <Text style={styles.retakeText}>Retake Photo</Text>
+            <Text style={styles.retakeText}>Retake Video</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sendButton, isSending && { opacity: 0.7 }]}
-            onPress={handleSend}
-            disabled={isSending}
-          >
+          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
             <Send size={16} color="white" />
-            <Text style={styles.sendButtonText}>{isSending ? 'Processing...' : 'Send'}</Text>
+            <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -531,7 +567,7 @@ export default function WebGuestScreen() {
       {!isRecording && !isPreviewing && !guestId && (
         <View style={styles.footer}>
           <Text style={styles.disclaimer}>
-            This takes a quick photo/selfie{'\n'}which is sent to the owner.
+            This triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
           </Text>
           {/* Updated Link Button */}
           <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>

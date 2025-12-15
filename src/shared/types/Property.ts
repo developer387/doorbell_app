@@ -36,9 +36,4 @@ export interface Property {
   id?: string; // Firestore Document ID
   allowGuest?: boolean; // Controls guest access permission
   guests?: Guest[];
-  guestRequests?: {
-    uri: string;
-    guestId: string;
-    createdAt: string;
-  }[];
 }

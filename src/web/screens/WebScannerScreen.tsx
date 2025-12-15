@@ -37,31 +37,9 @@ export default function WebScannerScreen() {
         setIsLoading(true);
 
         try {
-            // Extract UUID from scanned QR code or URL
-            let uuid = data.trim();
-            console.log("Scanned Data:", uuid);
-
-            // If it's a URL, try to extract specific params or ID
-            if (uuid.startsWith('http') || uuid.includes('://')) {
-                try {
-                    // split query params
-                    const queryString = uuid.split('?')[1];
-                    if (queryString) {
-                        const params = new URLSearchParams(queryString);
-                        uuid = params.get('qrCodeUUID') || params.get('propertyId') || params.get('id') || uuid;
-                    } else {
-                        // No query params, maybe last path segment?
-                        const parts = uuid.split('/').filter(p => p && p.length > 0);
-                        if (parts.length > 0) {
-                            uuid = parts[parts.length - 1];
-                        }
-                    }
-                } catch (e) {
-                    console.log('Error parsing URL, using full data:', e);
-                }
-            }
-
-            console.log("Resolved UUID for lookup:", uuid);
+            // Extract UUID from scanned QR code
+            const uuid = data.trim();
+            console.log("Scanned UUID:", uuid);
 
             // Look up property by UUID
             const property = await PropertyService.findByQRCodeUUID(uuid);
