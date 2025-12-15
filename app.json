@@ -24,7 +24,12 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBgCI4ytUMkGRq70mYAnC8febOjz7UyJDc"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
