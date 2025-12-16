@@ -8,6 +8,7 @@ import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase
 import { db } from '@/config/firebase';
 import type { GuestRequest } from '@/types';
 import { Loading } from '@/components';
+import { CallModal } from './CallModal';
 
 interface RequestsTabProps {
   propertyId: string;
@@ -33,6 +34,8 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
   const [guestRequests, setGuestRequests] = useState<GuestRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const [isCallVisible, setIsCallVisible] = useState(false);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -199,7 +202,16 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
                     style={styles.recordButton}
-                    onPress={() => { /* empty */ }}
+                    onPress={() => {
+                      setActiveCallId(request.id);
+                      setIsCallVisible(true);
+                      // Update status to accepted
+                      updateDoc(doc(db, 'properties', propertyId, 'guestRequests', request.id), {
+                        status: 'accepted',
+                        callStarted: true,
+                        channelId: request.id
+                      });
+                    }}
                   >
                     <MediumText variant="white" weight="bold">
                       Accept
@@ -227,6 +239,16 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
           ))}
         </View>
       ))}
+      {activeCallId && (
+        <CallModal
+          visible={isCallVisible}
+          channelId={activeCallId}
+          onClose={() => {
+            setIsCallVisible(false);
+            setActiveCallId(null);
+          }}
+        />
+      )}
     </ScrollView>
   );
 };

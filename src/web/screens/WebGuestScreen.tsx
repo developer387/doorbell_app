@@ -10,6 +10,9 @@ import { addDoc, collection, doc, getDoc, updateDoc, onSnapshot } from 'firebase
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
+import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
+import { agoraConfig } from '@/config/agora';
+import { Phone, PhoneOff, Mic, MicOff, Video as VideoIcon, VideoOff } from 'lucide-react-native';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -42,6 +45,16 @@ export default function WebGuestScreen() {
   // -- Request Status State --
   const [requestDocId, setRequestDocId] = useState<string | null>(null);
   const [isDeclined, setIsDeclined] = useState(false);
+  const [isIncomingCall, setIsIncomingCall] = useState(false);
+  const [isCallActive, setIsCallActive] = useState(false);
+
+  // -- Agora State --
+  const agoraClient = useRef<IAgoraRTCClient | null>(null);
+  const localAudioTrack = useRef<IMicrophoneAudioTrack | null>(null);
+  const localVideoTrack = useRef<ICameraVideoTrack | null>(null);
+  const [remoteUser, setRemoteUser] = useState<any>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
 
   // PIN digit states for 4-box input
   const [pin1, setPin1] = useState('');
@@ -428,13 +441,173 @@ export default function WebGuestScreen() {
           setIsDeclined(true);
           setIsWaiting(false); // Stop waiting
         }
+        if (data?.status === 'accepted') {
+          setIsWaiting(false);
+          setIsIncomingCall(true);
+        }
       }
     });
 
     return () => unsubscribe();
   }, [requestDocId, property.id]);
 
+  const handleJoinCall = async () => {
+    setIsIncomingCall(false);
+    setIsCallActive(true);
+
+    try {
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      agoraClient.current = client;
+
+      client.on('user-published', async (user, mediaType) => {
+        await client.subscribe(user, mediaType);
+        if (mediaType === 'video') {
+          setRemoteUser(user);
+        }
+        if (mediaType === 'audio') {
+          user.audioTrack?.play();
+        }
+      });
+
+      client.on('user-unpublished', (user) => {
+        setRemoteUser(null);
+      });
+
+      client.on('user-left', () => {
+        handleEndCall();
+      });
+
+      // Join channel using request ID
+      await client.join(agoraConfig.appId, requestDocId!, null, null);
+
+      const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+      localAudioTrack.current = microphoneTrack;
+      localVideoTrack.current = cameraTrack;
+
+      await client.publish([microphoneTrack, cameraTrack]);
+
+    } catch (error) {
+      console.error('Error joining call:', error);
+      Alert.alert('Error', 'Failed to join call');
+      handleEndCall();
+    }
+  };
+
+  const handleEndCall = async () => {
+    localAudioTrack.current?.close();
+    localVideoTrack.current?.close();
+    await agoraClient.current?.leave();
+
+    setIsCallActive(false);
+    setIsIncomingCall(false);
+    setGuestId(''); // Reset
+    setRemoteUser(null);
+  };
+
+  const toggleMute = async () => {
+    if (localAudioTrack.current) {
+      const newMuted = !isMuted;
+      await localAudioTrack.current.setEnabled(!newMuted);
+      setIsMuted(newMuted);
+    }
+  };
+
+  const toggleVideo = async () => {
+    if (localVideoTrack.current) {
+      const newEnabled = !isVideoEnabled;
+      await localVideoTrack.current.setEnabled(newEnabled);
+      setIsVideoEnabled(newEnabled);
+    }
+  };
+
+  // Play local video when active
+  useEffect(() => {
+    if (isCallActive && localVideoTrack.current) {
+      localVideoTrack.current.play('local-player');
+    }
+  }, [isCallActive]); // Re-run if call becomes active
+
+  // Play remote video when user connects
+  useEffect(() => {
+    if (isCallActive && remoteUser && remoteUser.videoTrack) {
+      remoteUser.videoTrack.play('remote-player');
+    }
+  }, [isCallActive, remoteUser]);
+
+  // Cleanup on mount/unmount
+  useEffect(() => {
+    return () => {
+      localAudioTrack.current?.close();
+      localVideoTrack.current?.close();
+      agoraClient.current?.leave();
+    };
+  }, []);
+
   // -- Render Logic --
+
+  // -- Render Logic --
+
+  // 0. Active Call View
+  if (isCallActive) {
+    return (
+      <View style={styles.container}>
+        {/* Remote Video Container - Full Screen */}
+        <div id="remote-player" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: '#000' }}></div>
+
+        {/* Local Video Container - PIP */}
+        <div id="local-player" style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          width: 120,
+          height: 160,
+          borderRadius: 12,
+          overflow: 'hidden',
+          border: '2px solid rgba(255,255,255,0.3)',
+          zIndex: 10
+        }}></div>
+
+        {!remoteUser && (
+          <View style={styles.waitingContainer}>
+            <Text style={styles.waitingText}>Connecting...</Text>
+          </View>
+        )}
+
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity style={[styles.controlButton]} onPress={toggleMute}>
+            {isMuted ? <MicOff color="white" size={24} /> : <Mic color="white" size={24} />}
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#ef4444', width: 64, height: 64, borderRadius: 32 }]} onPress={handleEndCall}>
+            <PhoneOff color="white" size={32} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.controlButton]} onPress={toggleVideo}>
+            {isVideoEnabled ? <VideoIcon color="white" size={24} /> : <VideoOff color="white" size={24} />}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // 0.5 Incoming Call View
+  if (isIncomingCall) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.waitingContainer}>
+          <View style={[styles.sendIconContainer, { backgroundColor: '#darkgreen' }]}>
+            {/* Placeholder for owner avatar if we had it */}
+            <Text style={{ fontSize: 40 }}>👤</Text>
+          </View>
+          <Text style={styles.waitingTitle}>Incoming Call</Text>
+          <Text style={styles.waitingText}>Property Owner is calling you.</Text>
+
+          <TouchableOpacity style={[styles.waitingButton, { backgroundColor: '#10b981', flexDirection: 'row', gap: 10 }]} onPress={handleJoinCall}>
+            <Phone color="white" size={24} />
+            <Text style={[styles.waitingButtonText, { color: 'white' }]}>Start Call</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   // 1. Locks View
   if (showLocks) {
@@ -1121,5 +1294,23 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  actionButtonsContainer: {
+    position: 'absolute',
+    bottom: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    width: '100%',
+    zIndex: 20,
+  },
+  controlButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
