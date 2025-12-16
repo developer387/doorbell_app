@@ -173,7 +173,7 @@ export const GuestSheet = ({
                                 <Body>{startTime.toLocaleDateString()}</Body>
                                 <SmallText variant="secondary">{startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</SmallText>
                             </View>
-                            <Clock size={16} color="#888888" />
+                            <Clock size={16} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
                     <View style={{ flex: 1 }}>
@@ -186,7 +186,7 @@ export const GuestSheet = ({
                                 <Body>{endTime.toLocaleDateString()}</Body>
                                 <SmallText variant="secondary">{endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</SmallText>
                             </View>
-                            <Clock size={16} color="#888888" />
+                            <Clock size={16} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
         marginBottom: 20
     },
     timeInput: {
-        backgroundColor: '#F1F5F9',
+        backgroundColor: colors.slate100,
         padding: 12,
         borderRadius: 8,
         flexDirection: 'row',
@@ -277,10 +277,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#F8FAFC',
+        backgroundColor: colors.slate50,
         padding: 16,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#E2E8F0'
+        borderColor: colors.borderColor
     }
 });

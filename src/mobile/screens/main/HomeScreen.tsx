@@ -10,7 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { useUserProperties } from '@/hooks/useUserProperties';
-import { Loading, PropertyCard } from '@/components';
+import { Loading, PropertyCard, Button } from '@/components';
 import type { ChipItem } from '@/components/ScrollableChipList';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
@@ -63,7 +63,7 @@ export const HomeScreen = () => {
             style={styles.bell}
             onPress={handleBellPress}
           >
-            <Bell size={22} color="#0f172a" />
+            <Bell size={22} color={colors.dark} />
             {notificationCount > 0 && (
               <View style={styles.notificationBadge}>
                 <MediumText variant="white" style={styles.notificationText}>
@@ -78,9 +78,9 @@ export const HomeScreen = () => {
           <TextInput
             placeholder="Search property"
             style={styles.input}
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.slate400}
           />
-          <Search size={20} color="#0f172a" />
+          <Search size={20} color={colors.dark} />
         </View>
 
         <FilterChips items={chips} />
@@ -103,12 +103,11 @@ export const HomeScreen = () => {
               No property has not been added yet. Click the button below to add a property
             </MediumText>
 
-            <TouchableOpacity
-              style={styles.addButton}
+            <Button
+              title="Add Property +"
               onPress={() => navigation.navigate('AddProperty')}
-            >
-              <MediumText variant="white" weight="bold">Add Property +</MediumText>
-            </TouchableOpacity>
+              style={styles.addButton}
+            />
           </View>
         )}
       </ScrollView>
@@ -203,14 +202,7 @@ const styles = StyleSheet.create({
   },
 
   addButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    borderRadius: 12,
-  },
-
-  addButtonText: {
-    color: colors.white,
-    fontWeight: '600',
+    width: 'auto',
+    minWidth: 200,
   },
 });

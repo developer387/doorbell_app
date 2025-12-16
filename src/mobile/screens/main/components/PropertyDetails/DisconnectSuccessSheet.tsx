@@ -84,14 +84,14 @@ const styles = StyleSheet.create({
         width: '100%',
         padding: 16,
         borderWidth: 1,
-        borderColor: '#E2E8F0',
+        borderColor: colors.borderColor,
         borderRadius: 12,
         marginBottom: 24,
     },
     houseIconPlaceholder: {
         width: 40,
         height: 40,
-        backgroundColor: '#E2E8F0',
+        backgroundColor: colors.borderColor,
         borderRadius: 8,
     },
     successNote: {

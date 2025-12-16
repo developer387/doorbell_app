@@ -20,6 +20,7 @@ import type { MainStackParamList } from '@navigation-types';
 import { useAuth } from '@/context/UserContext';
 import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
+import { Button } from '@/components';
 
 import { generateUUID, reverseGeocode } from '@/utils/helpers';
 
@@ -259,17 +260,16 @@ export const AddPropertyScreen = () => {
                 {scanError}
               </Body>
             )}
-            <TouchableOpacity
-              style={styles.rescanButton}
+            <Button
+              title="Scan Again"
               onPress={() => {
                 setScanned(false);
                 setPropertyId('');
                 setShowForm(false);
                 setScanError(null);
               }}
-            >
-              <Body variant="white" weight="bold">Scan Again</Body>
-            </TouchableOpacity>
+              style={{ width: 'auto', minWidth: 150 }}
+            />
           </View>
         )}
       </View>
@@ -298,7 +298,7 @@ export const AddPropertyScreen = () => {
               <TextInput
                 style={styles.input}
                 placeholder="Property name"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.slate400}
                 value={propertyName}
                 onChangeText={setPropertyName}
               />
@@ -311,7 +311,7 @@ export const AddPropertyScreen = () => {
               <TextInput
                 style={styles.input}
                 placeholder="Address"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.slate400}
                 value={address}
                 onChangeText={setAddress}
                 multiline
@@ -351,15 +351,13 @@ export const AddPropertyScreen = () => {
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+          <Button
+            title="Proceed"
             onPress={handleSubmit}
             disabled={isSubmitting}
-          >
-            <Body variant="white" weight="bold">
-              {isSubmitting ? 'Saving...' : 'Proceed'}
-            </Body>
-          </TouchableOpacity>
+            isLoading={isSubmitting}
+            style={{ marginBottom: 40 }}
+          />
         </ScrollView>
       </View>
     );
@@ -385,10 +383,11 @@ export const AddPropertyScreen = () => {
           To add a new property, you need to scan the QR code provided with your doorbell device.
         </Body>
 
-        <TouchableOpacity style={styles.startScanButton} onPress={handleStartScanning}>
-          <QrCode size={20} color={colors.white} />
-          <Body variant="white" weight="bold">Start Scanning</Body>
-        </TouchableOpacity>
+        <Button
+          title="Start Scanning"
+          onPress={handleStartScanning}
+          leftIcon={<QrCode size={20} color={colors.white} />}
+        />
       </View>
     </View>
   );
@@ -433,7 +432,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     padding: 20,
     borderRadius: 20,
-    backgroundColor: '#f0fdf4',
+    backgroundColor: colors.green50,
   },
   startScanTitle: {
     fontSize: 24,
@@ -444,25 +443,10 @@ const styles = StyleSheet.create({
   },
   startScanText: {
     fontSize: 15,
-    color: '#64748b',
+    color: colors.slate500,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 32,
-  },
-  startScanButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  startScanButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
   cameraContainer: {
     flex: 1,
@@ -497,22 +481,8 @@ const styles = StyleSheet.create({
   },
   instructionText: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.slate500,
     textAlign: 'center',
-  },
-  rescanButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rescanButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
   },
   noPermissionText: {
     fontSize: 18,
@@ -523,7 +493,7 @@ const styles = StyleSheet.create({
   },
   noPermissionSubtext: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.slate500,
     textAlign: 'center',
   },
   formContainer: {
@@ -532,7 +502,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.slate500,
     marginBottom: 24,
   },
   inputGroup: {
@@ -576,20 +546,5 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  submitButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

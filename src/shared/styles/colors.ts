@@ -16,4 +16,13 @@ export const colors = {
   activeTagBg: '#E0F7E9',
   active: '#00A854',
   tagBg: '#CAC5CD',
+
+  // New unified colors
+  slate400: '#94a3b8',
+  slate500: '#64748b',
+  green50: '#f0fdf4',
+  slate50: '#F8FAFC',
+  slate100: '#F1F5F9',
+  slate300: '#D1D5DB',
+  errorBg: '#fee2e2',
 };

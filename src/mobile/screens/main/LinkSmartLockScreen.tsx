@@ -5,7 +5,7 @@ import { type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { type MainStackParamList } from '@navigation-types';
 import { ArrowLeft, Search, ChevronRight, X, Check, Plus, Link2Off } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
-import { BottomSheet } from '@/components/BottomSheet';
+import { BottomSheet, Button } from '@/components';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 import { seamService, type SeamBrand, type Lock } from '@/services/seam.service';
 import { collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
@@ -454,7 +454,7 @@ export const LinkSmartLockScreen = () => {
                         onPress={() => handleToggleLinkLock(device.device_id)}
                       >
                         {isLinked ? (
-                          <Link2Off size={20} color="#EF4444" strokeWidth={2.5} />
+                          <Link2Off size={20} color={colors.error} strokeWidth={2.5} />
                         ) : (
                           <Plus size={20} color={colors.dark} strokeWidth={2.5} />
                         )}
@@ -470,25 +470,13 @@ export const LinkSmartLockScreen = () => {
 
       {/* Proceed Button */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[
-            styles.proceedButton,
-            linkedLockIds.size > 0 && styles.proceedButtonActive,
-          ]}
+        <Button
+          title="Proceed"
           onPress={handleProceed}
           disabled={isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator size="small" color={colors.white} />
-          ) : (
-            <Body
-              variant={linkedLockIds.size > 0 ? 'white' : 'secondary'}
-              weight="bold"
-            >
-              Proceed
-            </Body>
-          )}
-        </TouchableOpacity>
+          isLoading={isSaving}
+          variant={linkedLockIds.size > 0 ? 'primary' : 'secondary'}
+        />
       </View>
 
       {/* Bottom Sheet for Brand Selection */}
@@ -505,13 +493,13 @@ export const LinkSmartLockScreen = () => {
           </View>
 
           <View style={styles.searchContainer}>
-            <Search size={20} color="#94a3b8" style={styles.searchIcon} />
+            <Search size={20} color={colors.slate400} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search Smart lock brand"
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.slate400}
             />
           </View>
 
@@ -552,7 +540,7 @@ export const LinkSmartLockScreen = () => {
                     )}
                     <Body style={styles.brandListName}>{brand.display_name}</Body>
                   </View>
-                  <ChevronRight size={20} color="#94a3b8" />
+                  <ChevronRight size={20} color={colors.slate400} />
                 </TouchableOpacity>
               ))}
               {filteredBrands.length === 0 && !isLoadingBrands && (
@@ -638,7 +626,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: colors.slate400,
     marginBottom: 24,
   },
   brandSection: {
@@ -665,18 +653,18 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.slate500,
     marginTop: 12,
     textAlign: 'center',
   },
   errorContainer: {
     padding: 16,
-    backgroundColor: '#fee2e2',
+    backgroundColor: colors.errorBg,
     borderRadius: 8,
     marginBottom: 16,
   },
   errorText: {
-    color: '#dc2626',
+    color: colors.error,
     fontSize: 14,
     textAlign: 'center',
   },
@@ -687,7 +675,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.borderColor,
     padding: 16,
     marginBottom: 16,
   },
@@ -727,11 +715,11 @@ const styles = StyleSheet.create({
   removeText: {
     fontSize: 14,
     fontWeight: '400',
-    color: '#EF4444',
+    color: colors.error,
   },
   selectText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: colors.slate400,
     marginBottom: 16,
   },
   lockRow: {
@@ -765,7 +753,7 @@ const styles = StyleSheet.create({
   },
   lockSubtext: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: colors.slate400,
     marginTop: 2,
   },
   actionButton: {
@@ -779,7 +767,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   unlinkButton: {
-    borderColor: '#EF4444',
+    borderColor: colors.error,
   },
   footer: {
     padding: 16,
@@ -792,17 +780,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  proceedButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  proceedButtonText: {
-    color: '#9CA3AF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  proceedButtonTextActive: {
-    color: colors.white,
-  },
+
   // Bottom Sheet Styles
   bottomSheetContent: {
     paddingBottom: 20,
@@ -821,7 +799,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.slate100,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -844,7 +822,7 @@ const styles = StyleSheet.create({
   },
   poweredByText: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.slate400,
   },
   seamText: {
     fontSize: 12,
@@ -882,7 +860,7 @@ const styles = StyleSheet.create({
   },
   noBrandsText: {
     fontSize: 16,
-    color: '#94a3b8',
+    color: colors.slate400,
     textAlign: 'center',
     paddingVertical: 20,
   },
@@ -909,7 +887,7 @@ const styles = StyleSheet.create({
   },
   modalMessage: {
     fontSize: 14,
-    color: '#64748B',
+    color: colors.slate500,
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 20,
@@ -923,7 +901,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.borderColor,
     backgroundColor: colors.white,
     alignItems: 'center',
   },
@@ -936,7 +914,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#EF4444',
+    backgroundColor: colors.error,
     alignItems: 'center',
   },
   modalRemoveText: {
