@@ -5,7 +5,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type Property } from '@/types/Property';
-import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
@@ -37,6 +38,10 @@ export default function WebGuestScreen() {
   const [isPinVerified, setIsPinVerified] = useState(false);
   const [showLocks, setShowLocks] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+
+  // -- Request Status State --
+  const [requestDocId, setRequestDocId] = useState<string | null>(null);
+  const [isDeclined, setIsDeclined] = useState(false);
 
   // PIN digit states for 4-box input
   const [pin1, setPin1] = useState('');
@@ -196,7 +201,11 @@ export default function WebGuestScreen() {
 
   // Removed previous handleStartRecording in favor of split methods above, ensuring no duplicates.
 
+  // New state for sending status
+  const [isSending, setIsSending] = useState(false);
+
   const handleSend = async () => {
+    setIsSending(true);
     try {
       let downloadUrl = '';
       if (videoChunksRef.current.length > 0) {
@@ -208,29 +217,47 @@ export default function WebGuestScreen() {
           const videoRef = ref(storage, `guest-videos/${guestId}.${extension}`);
           await uploadBytes(videoRef, videoBlob);
           downloadUrl = await getDownloadURL(videoRef);
+          console.log('Uploaded Video URI:', downloadUrl);
         } catch (uploadError) {
           console.error('Error uploading video:', uploadError);
           alert('Failed to upload video. Please try again.');
+          setIsSending(false);
           return;
         }
       }
 
-      await addDoc(collection(db, 'guestRequests'), {
+      // Save to subcollection: properties/{propertyId}/guestRequests
+      const requestData = {
         guestId,
-        propertyId: property.propertyId,
+        propertyId: property.propertyId || property.id, // Fallback to id if propertyId is missing
         propertyName: property.propertyName || 'Property',
         timestamp: new Date().toISOString(),
         status: 'pending',
         userId: property.userId,
         videoUrl: downloadUrl,
-      });
+      };
 
-      // Removed setRequestId as it was unused and removed from state
+      const docRef = await addDoc(collection(db, 'properties', property.id!, 'guestRequests'), requestData);
+      setRequestDocId(docRef.id);
+
+      // Update property to indicate it has pending requests
+      try {
+        await updateDoc(doc(db, 'properties', property.id!), {
+          hasPendingRequest: true,
+          lastRequestTimestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error("Failed to update property pending status", err);
+        // Not blocking
+      }
+
       setIsRecording(false);
       setIsWaiting(true);
     } catch (error) {
       console.error('Error sending guest request:', error);
       alert('Failed to send request. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -247,6 +274,8 @@ export default function WebGuestScreen() {
     setRecordingTime(0);
     setGuestId(''); // Reset to allow starting over
     videoChunksRef.current = [];
+    setRequestDocId(null);
+    setIsDeclined(false);
   };
 
   // -- Handlers (New PIN Flow) --
@@ -388,6 +417,23 @@ export default function WebGuestScreen() {
     // In a real app we'd update state or call API here
   };
 
+  // -- Effects (New) --
+  useEffect(() => {
+    if (!requestDocId || !property.id) return;
+
+    const unsubscribe = onSnapshot(doc(db, 'properties', property.id!, 'guestRequests', requestDocId), (snapshot) => { // Use property.id not propertyId
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data?.status === 'declined') {
+          setIsDeclined(true);
+          setIsWaiting(false); // Stop waiting
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [requestDocId, property.id]);
+
   // -- Render Logic --
 
   // 1. Locks View
@@ -424,7 +470,33 @@ export default function WebGuestScreen() {
     )
   }
 
-  // 2. Waiting View
+  // 3. Declined View
+  if (isDeclined) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.waitingContainer}>
+          <View style={[styles.sendIconContainer, { backgroundColor: '#ef4444' }]}>
+            <CloseIcon size={80} color="white" />
+          </View>
+          <Text style={styles.waitingTitle}>Request Declined</Text>
+          <Text style={styles.waitingText}>
+            The property owner has declined your request at this time.
+          </Text>
+          <TouchableOpacity
+            style={[styles.waitingButton, { backgroundColor: '#333' }]}
+            onPress={() => {
+              setIsDeclined(false);
+              handleRetake();
+            }}
+          >
+            <Text style={styles.waitingButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // 4. Waiting View
   if (isWaiting) {
     return (
       <View style={styles.container}>
@@ -445,7 +517,7 @@ export default function WebGuestScreen() {
     );
   }
 
-  // 3. Main View (Camera + Start)
+  // 5. Main View (Camera + Start)
   return (
     <View style={styles.container}>
       {guestId && (
@@ -553,13 +625,21 @@ export default function WebGuestScreen() {
 
       {showSendButton && (
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity style={styles.retakeButton} onPress={handleRetake}>
+          <TouchableOpacity
+            style={[styles.retakeButton, isSending && { opacity: 0.5 }]}
+            onPress={handleRetake}
+            disabled={isSending}
+          >
             <RefreshCw size={16} color="#4ade80" />
             <Text style={styles.retakeText}>Retake Video</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+          <TouchableOpacity
+            style={[styles.sendButton, isSending && { opacity: 0.5 }]}
+            onPress={handleSend}
+            disabled={isSending}
+          >
             <Send size={16} color="white" />
-            <Text style={styles.sendButtonText}>Send</Text>
+            <Text style={styles.sendButtonText}>{isSending ? 'Sending...' : 'Send'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -798,18 +878,19 @@ const styles = StyleSheet.create({
   actionButtonsContainer: {
     width: '100%',
     paddingHorizontal: 40,
-    gap: 16,
+    gap: 24,
   },
   retakeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 16,
     paddingVertical: 8,
   },
   retakeText: {
     color: '#4ade80',
     fontSize: 16,
+    marginTop: 12,
     fontWeight: '600',
   },
   sendButton: {

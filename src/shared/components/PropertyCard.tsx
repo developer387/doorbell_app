@@ -21,8 +21,8 @@ export const PropertyCard = ({ property }: PropertyCardProps) => {
   const navigation = useNavigation();
 
   const handlePress = () => {
-  navigation.navigate('PropertyDetails', { propertyId: property.propertyId })
-}
+    navigation.navigate('PropertyDetails', { propertyId: property.id! })
+  }
 
   return (
     <View style={styles.container}>

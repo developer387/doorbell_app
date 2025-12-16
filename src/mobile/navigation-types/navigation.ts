@@ -17,9 +17,8 @@ export interface MainStackParamList extends ParamListBase {
     Settings: undefined;
     AddProperty: undefined;
     LinkSmartLock: { propertyId: string };
-    PropertyDetails: { propertyId: string };
+    PropertyDetails: { propertyId: string; initialTab?: string };
     ListLocks: { deviceId: string };
-    Notifications: undefined;
     VideoCall: {
         requestId: string;
         guestId: string;

@@ -6,6 +6,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft } from 'lucide-react-native';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 import { colors } from '@/styles/colors';
 import { useAuth } from '@/context/UserContext';
 import { Loading, FilterChips, type ChipItem } from '@/components'; // Assuming index exports these
@@ -23,24 +25,27 @@ import { DisconnectSuccessSheet } from './components/PropertyDetails/DisconnectS
 import { PropertyDetailsTab } from './components/PropertyDetails/PropertyDetailsTab';
 import { SmartLocksTab } from './components/PropertyDetails/SmartLocksTab';
 import { GuestsTab } from './components/PropertyDetails/GuestsTab';
+import { RequestsTab } from './components/PropertyDetails/RequestsTab';
 import { Body, Title } from '@/typography';
 
 export const PropertyDetails = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const route = useRoute<any>();
-  const { propertyId } = route.params;
+  const { propertyId, initialTab } = route.params;
 
   const { property, loading, refetch } = useGetUserProperty(user?.uid, propertyId);
   const actions = usePropertyActions(property, refetch);
 
-  const [activeSheet, setActiveSheet] = useState<string>('none');
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [createdGuest, setCreatedGuest] = useState<Guest | null>(null);
   const [selectedLockId, setSelectedLockId] = useState<string | null>(null);
   const [selectedLockName, setSelectedLockName] = useState('');
   const [lockStates, setLockStates] = useState<LockState[]>([]);
   const [isGuestAccessEnabled, setIsGuestAccessEnabled] = useState(false);
+  const [activeSheet, setActiveSheet] = useState<string>('none');
+  const [requestCount, setRequestCount] = useState(0);
+
 
   React.useEffect(() => {
     if (property?.allowGuest !== undefined) setIsGuestAccessEnabled(property.allowGuest);
@@ -67,13 +72,28 @@ export const PropertyDetails = () => {
     }
   }, [property?.smartLocks, propertyId]);
 
+  React.useEffect(() => {
+    if (!propertyId) return;
+    const unsub = onSnapshot(collection(db, 'properties', propertyId, 'guestRequests'), (snap) => {
+      setRequestCount(snap.size);
+    });
+    return () => unsub();
+  }, [propertyId]);
+
   const chips: ChipItem[] = [
     { label: 'Property Details', value: 'propertyDetails' },
     { label: 'Smart Locks', value: 'locks', count: property?.smartLocks?.length },
     { label: 'Guests', value: 'guests', count: property?.guests?.length },
-    { label: 'Requests', value: 'request', count: 1 },
+    { label: 'Requests', value: 'request', count: requestCount > 0 ? requestCount : undefined },
   ];
-  const [activeChip, setActiveChip] = useState(chips[0].value);
+
+  const [activeChip, setActiveChip] = useState(initialTab === 'request' ? 'request' : chips[0].value);
+
+  React.useEffect(() => {
+    if (initialTab === 'request') {
+      setActiveChip('request');
+    }
+  }, [initialTab]);
 
   if (loading) return <Loading />;
 
@@ -151,7 +171,7 @@ export const PropertyDetails = () => {
         />
       )}
 
-      {activeChip === 'request' && <Body>Requests</Body>}
+      {activeChip === 'request' && <RequestsTab propertyId={propertyId} />}
 
       <PinSheet
         isVisible={activeSheet === 'pin'}

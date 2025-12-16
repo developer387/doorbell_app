@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 
 import { Search, Bell, Plus } from 'lucide-react-native';
@@ -12,8 +12,6 @@ import type { MainStackParamList } from '@navigation-types';
 import { useUserProperties } from '@/hooks/useUserProperties';
 import { Loading, PropertyCard } from '@/components';
 import type { ChipItem } from '@/components/ScrollableChipList';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
 
 type NavigationProp = NativeStackNavigationProp<MainStackParamList>;
 
@@ -27,26 +25,29 @@ export const HomeScreen = () => {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();
   const { properties, loading } = useUserProperties();
-  const [notificationCount, setNotificationCount] = useState(0);
+  // Calculate notification count from properties
+  const notificationCount = properties.filter(p => p.hasPendingRequest).length;
 
-  useEffect(() => {
-    if (!user) return;
+  const handleBellPress = () => {
+    const propertiesWithRequests = properties.filter(p => p.hasPendingRequest);
 
-    // Listen to pending guest requests for this user
-    const q = query(
-      collection(db, 'guestRequests'),
-      where('userId', '==', user.uid),
-      where('status', '==', 'pending')
-    );
+    if (propertiesWithRequests.length > 0) {
+      const targetProperty = propertiesWithRequests.sort((a, b) => {
+        const timeA = a.lastRequestTimestamp ? new Date(a.lastRequestTimestamp).getTime() : 0;
+        const timeB = b.lastRequestTimestamp ? new Date(b.lastRequestTimestamp).getTime() : 0;
+        return timeB - timeA;
+      })[0];
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNotificationCount(snapshot.size);
-    });
+      if (targetProperty.id) {
+        navigation.navigate('PropertyDetails', {
+          propertyId: targetProperty.id,
+          initialTab: 'request'
+        });
+      }
+    }
+  };
 
-    return () => unsubscribe();
-  }, [user]);
-
-  if (loading) return <Loading />
+  if (loading) return <Loading />;
 
   return (
     <View style={styles.container}>
@@ -60,7 +61,7 @@ export const HomeScreen = () => {
           </Heading>
           <TouchableOpacity
             style={styles.bell}
-            onPress={() => navigation.navigate('Notifications')}
+            onPress={handleBellPress}
           >
             <Bell size={22} color="#0f172a" />
             {notificationCount > 0 && (

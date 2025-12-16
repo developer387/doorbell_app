@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { type Property } from '@/types';
 
@@ -18,20 +18,16 @@ export const useGetUserProperty = (
 
     setLoading(true);
     try {
-      const ref = collection(db, 'properties');
+      const docRef = doc(db, 'properties', propertyId);
+      const docSnap = await getDoc(docRef);
 
-      const q = query(
-        ref,
-        where('userId', '==', userId),
-        where('propertyId', '==', propertyId),
-        limit(1)
-      );
-
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        setProperty({ ...doc.data(), id: doc.id } as Property);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.userId === userId) {
+          setProperty({ ...data, id: docSnap.id } as Property);
+        } else {
+          setProperty(null);
+        }
       } else {
         setProperty(null);
       }

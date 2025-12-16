@@ -18,7 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '@navigation-types';
 import { useAuth } from '@/context/UserContext';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 
 import { generateUUID, reverseGeocode } from '@/utils/helpers';
@@ -31,6 +31,7 @@ export const AddPropertyScreen = () => {
   const [scanned, setScanned] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const { user } = useAuth();
 
@@ -58,16 +59,40 @@ export const AddPropertyScreen = () => {
     setCameraActive(true);
   };
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
+  const handleBarCodeScanned = async ({ data }: { data: string }) => {
     setScanned(true);
 
     // Extract UUID from scanned QR code
     // Assuming the QR code contains just the UUID or in a specific format
     const uuid = data.trim();
-    setPropertyId(uuid);
 
-    setCameraActive(false);
-    setShowForm(true);
+    try {
+      // Check if this property already exists
+      const q = query(collection(db, 'properties'), where('qrCodeUUID', '==', uuid));
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        setScanError('QR code already has a property');
+        Alert.alert('Error', 'QR code already has a property');
+
+        // Clear fields
+        setPropertyId('');
+        setPropertyName('');
+        setAddress('');
+        setLocation(null);
+        return;
+      }
+
+      setScanError(null);
+      setPropertyId(uuid);
+      setCameraActive(false);
+      setShowForm(true);
+    } catch (error) {
+      console.error('Error checking property existence:', error);
+      Alert.alert('Error', 'Failed to validate QR code. Please try again.');
+      setScanned(false);
+      setScanError(null);
+    }
   };
 
   const handleUseCurrentLocation = async () => {
@@ -226,17 +251,26 @@ export const AddPropertyScreen = () => {
           </MediumText>
         </View>
 
+
         {scanned && (
-          <TouchableOpacity
-            style={styles.rescanButton}
-            onPress={() => {
-              setScanned(false);
-              setPropertyId('');
-              setShowForm(false);
-            }}
-          >
-            <Body variant="white" weight="bold">Tap to Scan Again</Body>
-          </TouchableOpacity>
+          <View style={{ alignItems: 'center', width: '100%' }}>
+            {scanError && (
+              <Body variant="primary" weight="bold" align="center" style={{ marginBottom: 16, color: colors.error }}>
+                {scanError}
+              </Body>
+            )}
+            <TouchableOpacity
+              style={styles.rescanButton}
+              onPress={() => {
+                setScanned(false);
+                setPropertyId('');
+                setShowForm(false);
+                setScanError(null);
+              }}
+            >
+              <Body variant="white" weight="bold">Scan Again</Body>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     );
@@ -468,11 +502,12 @@ const styles = StyleSheet.create({
   },
   rescanButton: {
     backgroundColor: colors.primary,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    paddingVertical: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
     borderRadius: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   rescanButtonText: {
     color: colors.white,
