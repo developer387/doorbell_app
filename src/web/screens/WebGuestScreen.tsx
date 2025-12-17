@@ -266,6 +266,7 @@ export default function WebGuestScreen() {
 
       setIsRecording(false);
       setIsWaiting(true);
+      setShowSendButton(false); // Clear review mode so we don't replay video later
     } catch (error) {
       console.error('Error sending guest request:', error);
       alert('Failed to send request. Please try again.');
@@ -469,7 +470,7 @@ export default function WebGuestScreen() {
         }
       });
 
-      client.on('user-unpublished', (user) => {
+      client.on('user-unpublished', () => {
         setRemoteUser(null);
       });
 
@@ -573,7 +574,7 @@ export default function WebGuestScreen() {
           </View>
         )}
 
-        <View style={styles.actionButtonsContainer}>
+        <View style={styles.callControlsContainer}>
           <TouchableOpacity style={[styles.controlButton]} onPress={toggleMute}>
             {isMuted ? <MicOff color="white" size={24} /> : <Mic color="white" size={24} />}
           </TouchableOpacity>
@@ -1295,7 +1296,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  actionButtonsContainer: {
+  callControlsContainer: {
     position: 'absolute',
     bottom: 30,
     flexDirection: 'row',

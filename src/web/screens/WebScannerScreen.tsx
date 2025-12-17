@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { PropertyService } from '@/services/property.service';
 
@@ -12,6 +12,13 @@ export default function WebScannerScreen() {
     const [torch, setTorch] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const navigation = useNavigation<any>();
+
+    useFocusEffect(
+        React.useCallback(() => {
+            setScanned(false);
+            setIsLoading(false);
+        }, [])
+    );
 
     if (!permission) {
         // Permission hook is still loading

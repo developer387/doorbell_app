@@ -6,7 +6,6 @@ import { colors } from '@/styles/colors';
 import { Body, MediumText, SmallText } from '@/typography';
 import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import type { GuestRequest } from '@/types';
 import { Loading } from '@/components';
 import { CallModal } from './CallModal';
 
