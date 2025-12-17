@@ -452,57 +452,101 @@ export default function WebGuestScreen() {
     return () => unsubscribe();
   }, [requestDocId, property.id]);
 
-  const handleJoinCall = async () => {
-    setIsIncomingCall(false);
-    setIsCallActive(true);
-
-    try {
-      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-      agoraClient.current = client;
-
-      client.on('user-published', async (user, mediaType) => {
-        await client.subscribe(user, mediaType);
-        if (mediaType === 'video') {
-          setRemoteUser(user);
-        }
-        if (mediaType === 'audio') {
-          user.audioTrack?.play();
-        }
-      });
-
-      client.on('user-unpublished', () => {
-        setRemoteUser(null);
-      });
-
-      client.on('user-left', () => {
-        handleEndCall();
-      });
-
-      // Join channel using request ID
-      await client.join(agoraConfig.appId, requestDocId!, null, null);
-
-      const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-      localAudioTrack.current = microphoneTrack;
-      localVideoTrack.current = cameraTrack;
-
-      await client.publish([microphoneTrack, cameraTrack]);
-
-    } catch (error) {
-      console.error('Error joining call:', error);
-      Alert.alert('Error', 'Failed to join call');
-      handleEndCall();
-    }
-  };
-
-  const handleEndCall = async () => {
+  const handleEndCall = async (resetState: boolean = true) => {
     localAudioTrack.current?.close();
     localVideoTrack.current?.close();
     await agoraClient.current?.leave();
 
     setIsCallActive(false);
     setIsIncomingCall(false);
-    setGuestId(''); // Reset
-    setRemoteUser(null);
+
+    if (resetState) {
+      setGuestId(''); // Reset only if explicitly requested
+      setRemoteUser(null);
+      setIsPreviewing(false);
+      setIsRecording(false);
+      setShowSendButton(false);
+    } else {
+      // On error, return to incoming call screen to allow retry
+      setIsIncomingCall(true);
+      setRemoteUser(null);
+    }
+  };
+
+  const handleJoinCall = async () => {
+    console.log('🎥 Guest joining Agora call...');
+    setIsIncomingCall(false);
+    setIsCallActive(true);
+
+    try {
+      // Create Agora client
+      console.log('📱 Creating Agora client...');
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      agoraClient.current = client;
+
+      // Set up event listeners
+      client.on('user-published', async (user, mediaType) => {
+        console.log('✅ User published:', user.uid, mediaType);
+        await client.subscribe(user, mediaType);
+        if (mediaType === 'video') {
+          console.log('📹 Remote video track received');
+          setRemoteUser(user);
+        }
+        if (mediaType === 'audio') {
+          console.log('🔊 Remote audio track received');
+          user.audioTrack?.play();
+        }
+      });
+
+      client.on('user-unpublished', (user, mediaType) => {
+        console.log('🔴 User unpublished:', user.uid, mediaType);
+        if (mediaType === 'video') {
+          setRemoteUser(null);
+        }
+      });
+
+      client.on('user-left', (user) => {
+        console.log('🔴 User left:', user.uid);
+        handleEndCall();
+      });
+
+      client.on('connection-state-change', (curState, prevState) => {
+        console.log('🔗 Connection state changed:', prevState, '->', curState);
+      });
+
+      // Join channel using request ID as channel name
+      console.log('🔄 Joining channel:', requestDocId);
+      await client.join(agoraConfig.appId, requestDocId!, null, null);
+      console.log('✅ Successfully joined channel');
+
+      // Create and publish local tracks
+      console.log('🎤 Creating microphone and camera tracks...');
+      const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks({
+        videoConfig: {
+          encoderConfig: "480p_1",
+          optimizationMode: "detail"
+        }
+      });
+
+      localAudioTrack.current = microphoneTrack;
+      localVideoTrack.current = cameraTrack;
+
+      console.log('✅ Tracks created successfully');
+
+      // Play local video immediately
+      cameraTrack.play('local-player');
+      console.log('✅ Local video started');
+
+      // Publish tracks
+      console.log('📤 Publishing tracks...');
+      await client.publish([microphoneTrack, cameraTrack]);
+      console.log('✅ Tracks published successfully');
+
+    } catch (error) {
+      console.error('❌ Error joining call:', error);
+      Alert.alert('Error', 'Failed to join call. Please check your camera and microphone permissions.');
+      handleEndCall(false); // Do not reset state on error
+    }
   };
 
   const toggleMute = async () => {
@@ -578,7 +622,7 @@ export default function WebGuestScreen() {
           <TouchableOpacity style={[styles.controlButton]} onPress={toggleMute}>
             {isMuted ? <MicOff color="white" size={24} /> : <Mic color="white" size={24} />}
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#ef4444', width: 64, height: 64, borderRadius: 32 }]} onPress={handleEndCall}>
+          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#ef4444', width: 64, height: 64, borderRadius: 32 }]} onPress={() => handleEndCall()}>
             <PhoneOff color="white" size={32} />
           </TouchableOpacity>
           <TouchableOpacity style={[styles.controlButton]} onPress={toggleVideo}>
@@ -603,7 +647,7 @@ export default function WebGuestScreen() {
 
           <TouchableOpacity style={[styles.waitingButton, { backgroundColor: '#10b981', flexDirection: 'row', gap: 10 }]} onPress={handleJoinCall}>
             <Phone color="white" size={24} />
-            <Text style={[styles.waitingButtonText, { color: 'white' }]}>Start Call</Text>
+            <Text style={[styles.waitingButtonText, { color: 'white' }]}>Accept Call</Text>
           </TouchableOpacity>
         </View>
       </View>
