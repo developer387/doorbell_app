@@ -5,15 +5,12 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type Property } from '@/types/Property';
-import { addDoc, collection, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
-import { db, storage } from '@/config/firebase';
-import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
 import { Phone, PhoneOff, Mic, MicOff, Video as VideoIcon, VideoOff } from 'lucide-react-native';
-import { collection, addDoc, onSnapshot, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, getDocs, deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -553,7 +550,7 @@ export default function WebGuestScreen() {
       // 9. Listen for Answer
       const unsubAnswer = onSnapshot(doc(db, signalingPath, 'answer'), async (snapshot) => {
         const data = snapshot.data();
-        if (data && !pc.currentRemoteDescription) {
+        if (data && !pc.remoteDescription) {
           console.log('📥 Received Answer');
           const answer = new RTCSessionDescription({
             type: data.type,
@@ -611,6 +608,18 @@ export default function WebGuestScreen() {
   };
 
   // No longer needed since we handle remote streams via ontrack and srcObject
+  useEffect(() => {
+    if (isCallActive) {
+      // Ensure local video is attached if stream exists
+      setTimeout(() => {
+        const localVideo = document.getElementById('local-player-video') as HTMLVideoElement;
+        const remoteVideo = document.getElementById('remote-player-video') as HTMLVideoElement;
+        if (localVideo && localStream.current) localVideo.srcObject = localStream.current;
+        if (remoteVideo && remoteStream) remoteVideo.srcObject = remoteStream;
+      }, 100);
+    }
+  }, [isCallActive, remoteStream]);
+
   useEffect(() => {
     return () => {
       localStream.current?.getTracks().forEach(track => track.stop());

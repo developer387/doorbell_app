@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
+import { Modal, StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import {
     RTCPeerConnection,
     RTCView,
@@ -9,10 +9,10 @@ import {
     MediaStream
 } from 'react-native-webrtc';
 import { db } from '@/config/firebase';
-import { doc, collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, getDocs, query } from 'firebase/firestore';
+import { doc, collection, onSnapshot, addDoc, setDoc } from 'firebase/firestore';
 import { PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
-import * as Camera from 'expo-camera';
+import { Camera } from 'expo-camera';
 
 interface CallModalProps {
     visible: boolean;
@@ -82,7 +82,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                 });
 
                 // 4. Handle Remote Stream
-                peer.ontrack = (event) => {
+                (peer as any).ontrack = (event: any) => {
                     console.log('✅ Remote track received on mobile');
                     if (event.streams && event.streams[0]) {
                         setRemoteStream(event.streams[0]);
@@ -90,7 +90,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                 };
 
                 // 5. Handle ICE Candidates
-                peer.onicecandidate = async (event) => {
+                (peer as any).onicecandidate = async (event: any) => {
                     if (event.candidate) {
                         console.log('📤 Sending ICE Candidate from mobile');
                         const remoteIceCol = collection(db, signalingPath, 'remoteIceCandidates');
@@ -101,7 +101,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                 // 6. Signaling: Listen for Offer
                 const unsubOffer = onSnapshot(doc(db, signalingPath, 'offer'), async (snapshot) => {
                     const data = snapshot.data();
-                    if (data?.sdp && data?.type && !peer.currentRemoteDescription) {
+                    if (data?.sdp && data?.type && !(peer as any).remoteDescription) {
                         console.log('📥 Received Offer on mobile');
 
                         await peer.setRemoteDescription(new RTCSessionDescription({
@@ -135,11 +135,18 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                     });
                 });
 
-                peer.onconnectionstatechange = () => {
-                    console.log('🔗 Mobile Connection State:', peer.connectionState);
-                    if (peer.connectionState === 'closed' || peer.connectionState === 'failed') {
+                (peer as any).onconnectionstatechange = () => {
+                    const state = (peer as any).connectionState;
+                    console.log('🔗 Mobile Connection State:', state);
+                    if (state === 'closed' || state === 'failed') {
                         handleEndCall();
                     }
+                };
+
+                return () => {
+                    unsubOffer();
+                    unsubIce();
+                    stream.getTracks().forEach(t => t.stop());
                 };
 
             } catch (error) {
