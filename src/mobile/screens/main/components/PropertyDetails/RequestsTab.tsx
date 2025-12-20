@@ -8,6 +8,7 @@ import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase
 import { db } from '@/config/firebase';
 import { Loading } from '@/components';
 import { CallModal } from './CallModal';
+import { GuestRequest } from '@/types';
 
 interface RequestsTabProps {
   propertyId: string;
@@ -242,6 +243,7 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
         <CallModal
           visible={isCallVisible}
           channelId={activeCallId}
+          propertyId={propertyId}
           onClose={() => {
             setIsCallVisible(false);
             setActiveCallId(null);

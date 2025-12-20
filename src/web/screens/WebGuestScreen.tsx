@@ -10,9 +10,10 @@ import { addDoc, collection, doc, getDoc, updateDoc, onSnapshot } from 'firebase
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
 import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
-import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
-import { agoraConfig } from '@/config/agora';
+import { db, storage } from '@/config/firebase';
+import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
 import { Phone, PhoneOff, Mic, MicOff, Video as VideoIcon, VideoOff } from 'lucide-react-native';
+import { collection, addDoc, onSnapshot, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -48,13 +49,20 @@ export default function WebGuestScreen() {
   const [isIncomingCall, setIsIncomingCall] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
 
-  // -- Agora State --
-  const agoraClient = useRef<IAgoraRTCClient | null>(null);
-  const localAudioTrack = useRef<IMicrophoneAudioTrack | null>(null);
-  const localVideoTrack = useRef<ICameraVideoTrack | null>(null);
-  const [remoteUser, setRemoteUser] = useState<any>(null);
+  // -- WebRTC State --
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const localStream = useRef<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+
+  const configuration = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+    ],
+  };
 
   // PIN digit states for 4-box input
   const [pin1, setPin1] = useState('');
@@ -453,138 +461,160 @@ export default function WebGuestScreen() {
   }, [requestDocId, property.id]);
 
   const handleEndCall = async (resetState: boolean = true) => {
-    localAudioTrack.current?.close();
-    localVideoTrack.current?.close();
-    await agoraClient.current?.leave();
+    console.log('🔌 Ending WebRTC call...');
 
+    // Stop local tracks
+    localStream.current?.getTracks().forEach(track => track.stop());
+    localStream.current = null;
+
+    // Close peer connection
+    if (peerConnection.current) {
+      peerConnection.current.close();
+      peerConnection.current = null;
+    }
+
+    setRemoteStream(null);
     setIsCallActive(false);
     setIsIncomingCall(false);
 
     if (resetState) {
       setGuestId(''); // Reset only if explicitly requested
-      setRemoteUser(null);
       setIsPreviewing(false);
       setIsRecording(false);
       setShowSendButton(false);
     } else {
       // On error, return to incoming call screen to allow retry
       setIsIncomingCall(true);
-      setRemoteUser(null);
     }
   };
 
   const handleJoinCall = async () => {
-    console.log('🎥 Guest joining Agora call...');
+    console.log('🎥 Guest joining WebRTC call...');
     setIsIncomingCall(false);
     setIsCallActive(true);
 
     try {
-      // Create Agora client
-      console.log('📱 Creating Agora client...');
-      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-      agoraClient.current = client;
+      // 1. Get Local Stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: true
+      });
+      localStream.current = stream;
 
-      // Set up event listeners
-      client.on('user-published', async (user, mediaType) => {
-        console.log('✅ User published:', user.uid, mediaType);
-        await client.subscribe(user, mediaType);
-        if (mediaType === 'video') {
-          console.log('📹 Remote video track received');
-          setRemoteUser(user);
+      // Play local stream immediately in UI if ref exists
+      const localVideo = document.getElementById('local-player-video') as HTMLVideoElement;
+      if (localVideo) localVideo.srcObject = stream;
+
+      // 2. Create Peer Connection
+      const pc = new RTCPeerConnection(configuration);
+      peerConnection.current = pc;
+
+      // 3. Add Local Tracks to PC
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      // 4. Handle Remote Tracks
+      pc.ontrack = (event) => {
+        console.log('✅ Remote track received');
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+          const remoteVideo = document.getElementById('remote-player-video') as HTMLVideoElement;
+          if (remoteVideo) remoteVideo.srcObject = event.streams[0];
         }
-        if (mediaType === 'audio') {
-          console.log('🔊 Remote audio track received');
-          user.audioTrack?.play();
+      };
+
+      // 5. Create Signaling Path
+      const signalingPath = `properties/${property.id}/guestRequests/${requestDocId}/signaling`;
+      const iceCandidatesCol = collection(db, signalingPath, 'iceCandidates', 'candidates');
+
+      // 6. Handle ICE Candidates
+      pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          console.log('📤 Sending ICE Candidate');
+          await addDoc(iceCandidatesCol, event.candidate.toJSON());
+        }
+      };
+
+      // 7. Create Offer
+      console.log('📝 Creating Offer...');
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const offerData = {
+        sdp: offer.sdp,
+        type: offer.type,
+      };
+
+      // 8. Save Offer to Firestore
+      await updateDoc(doc(db, 'properties', property.id!, 'guestRequests', requestDocId!), {
+        webrtcSignaling: true
+      });
+      await setDoc(doc(db, signalingPath, 'offer'), offerData);
+
+      // 9. Listen for Answer
+      const unsubAnswer = onSnapshot(doc(db, signalingPath, 'answer'), async (snapshot) => {
+        const data = snapshot.data();
+        if (data && !pc.currentRemoteDescription) {
+          console.log('📥 Received Answer');
+          const answer = new RTCSessionDescription({
+            type: data.type,
+            sdp: data.sdp,
+          } as RTCSessionDescriptionInit);
+          await pc.setRemoteDescription(answer);
         }
       });
 
-      client.on('user-unpublished', (user, mediaType) => {
-        console.log('🔴 User unpublished:', user.uid, mediaType);
-        if (mediaType === 'video') {
-          setRemoteUser(null);
+      // 10. Listen for Remote ICE Candidates
+      const remoteIceCol = collection(db, signalingPath, 'remoteIceCandidates');
+      const unsubIce = onSnapshot(remoteIceCol, (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            console.log('📥 Received Remote ICE Candidate');
+            await pc.addIceCandidate(new RTCIceCandidate(data));
+          }
+        });
+      });
+
+      // Cleanup listeners on end call
+      pc.onconnectionstatechange = () => {
+        console.log('🔗 PC Connection State:', pc.connectionState);
+        if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+          handleEndCall();
         }
-      });
-
-      client.on('user-left', (user) => {
-        console.log('🔴 User left:', user.uid);
-        handleEndCall();
-      });
-
-      client.on('connection-state-change', (curState, prevState) => {
-        console.log('🔗 Connection state changed:', prevState, '->', curState);
-      });
-
-      // Join channel using request ID as channel name
-      console.log('🔄 Joining channel:', requestDocId);
-      await client.join(agoraConfig.appId, requestDocId!, null, null);
-      console.log('✅ Successfully joined channel');
-
-      // Create and publish local tracks
-      console.log('🎤 Creating microphone and camera tracks...');
-      const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks({
-        videoConfig: {
-          encoderConfig: "480p_1",
-          optimizationMode: "detail"
-        }
-      });
-
-      localAudioTrack.current = microphoneTrack;
-      localVideoTrack.current = cameraTrack;
-
-      console.log('✅ Tracks created successfully');
-
-      // Play local video immediately
-      cameraTrack.play('local-player');
-      console.log('✅ Local video started');
-
-      // Publish tracks
-      console.log('📤 Publishing tracks...');
-      await client.publish([microphoneTrack, cameraTrack]);
-      console.log('✅ Tracks published successfully');
+      };
 
     } catch (error) {
-      console.error('❌ Error joining call:', error);
-      Alert.alert('Error', 'Failed to join call. Please check your camera and microphone permissions.');
-      handleEndCall(false); // Do not reset state on error
+      console.error('❌ Error initializing WebRTC call:', error);
+      Alert.alert('Error', 'Failed to start call. Please check your camera permissions.');
+      handleEndCall(false);
     }
   };
 
-  const toggleMute = async () => {
-    if (localAudioTrack.current) {
-      const newMuted = !isMuted;
-      await localAudioTrack.current.setEnabled(!newMuted);
-      setIsMuted(newMuted);
+  const toggleMute = () => {
+    if (localStream.current) {
+      const audioTrack = localStream.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
     }
   };
 
-  const toggleVideo = async () => {
-    if (localVideoTrack.current) {
-      const newEnabled = !isVideoEnabled;
-      await localVideoTrack.current.setEnabled(newEnabled);
-      setIsVideoEnabled(newEnabled);
+  const toggleVideo = () => {
+    if (localStream.current) {
+      const videoTrack = localStream.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
+      }
     }
   };
 
-  // Play local video when active
-  useEffect(() => {
-    if (isCallActive && localVideoTrack.current) {
-      localVideoTrack.current.play('local-player');
-    }
-  }, [isCallActive]); // Re-run if call becomes active
-
-  // Play remote video when user connects
-  useEffect(() => {
-    if (isCallActive && remoteUser && remoteUser.videoTrack) {
-      remoteUser.videoTrack.play('remote-player');
-    }
-  }, [isCallActive, remoteUser]);
-
-  // Cleanup on mount/unmount
+  // No longer needed since we handle remote streams via ontrack and srcObject
   useEffect(() => {
     return () => {
-      localAudioTrack.current?.close();
-      localVideoTrack.current?.close();
-      agoraClient.current?.leave();
+      localStream.current?.getTracks().forEach(track => track.stop());
+      peerConnection.current?.close();
     };
   }, []);
 
@@ -597,22 +627,43 @@ export default function WebGuestScreen() {
     return (
       <View style={styles.container}>
         {/* Remote Video Container - Full Screen */}
-        <div id="remote-player" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: '#000' }}></div>
+        <video
+          id="remote-player-video"
+          autoPlay
+          playsInline
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#000',
+            objectFit: 'contain'
+          }}
+        />
 
         {/* Local Video Container - PIP */}
-        <div id="local-player" style={{
-          position: 'absolute',
-          top: 20,
-          right: 20,
-          width: 120,
-          height: 160,
-          borderRadius: 12,
-          overflow: 'hidden',
-          border: '2px solid rgba(255,255,255,0.3)',
-          zIndex: 10
-        }}></div>
+        <video
+          id="local-player-video"
+          autoPlay
+          muted
+          playsInline
+          style={{
+            position: 'absolute',
+            top: 20,
+            right: 20,
+            width: 120,
+            height: 160,
+            borderRadius: 12,
+            overflow: 'hidden',
+            border: '2px solid rgba(255,255,255,0.3)',
+            zIndex: 10,
+            backgroundColor: '#222',
+            objectFit: 'cover'
+          }}
+        />
 
-        {!remoteUser && (
+        {!remoteStream && (
           <View style={styles.waitingContainer}>
             <Text style={styles.waitingText}>Connecting...</Text>
           </View>
