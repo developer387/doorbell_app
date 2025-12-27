@@ -1,0 +1,122 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Lint
+        run: npm run lint
+      
+      - name: Run Type Check
+        run: npm run type-check
+
+  eas-deploy:
+    name: EAS Build/Update
+    needs: lint
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: .github/filters.yml
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Define Environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "channel=production" >> $GITHUB_OUTPUT
+            echo "profile=production" >> $GITHUB_OUTPUT
+          else
+            echo "channel=dev" >> $GITHUB_OUTPUT
+            echo "profile=development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: EAS Update
+        # Run if source changed AND native didn't, OR if manual dispatch (force update)
+        if: (steps.changes.outputs.src == 'true' && steps.changes.outputs.native == 'false') || github.event_name == 'workflow_dispatch'
+        run: eas update --branch ${{ steps.env.outputs.channel }} --message "Update from commit ${{ github.sha }}"
+
+      - name: EAS Build
+        # Run if native changed
+        if: steps.changes.outputs.native == 'true'
+        run: eas build --platform android --profile ${{ steps.env.outputs.profile }} --non-interactive --no-wait
+
+  netlify-deploy:
+    name: Netlify Deploy
+    needs: lint
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web
+        run: npx expo export -p web
+
+      - name: Deploy to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npm install netlify-cli -g
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            netlify deploy --dir=dist --prod --message "Deploy from GitHub Actions: ${{ github.sha }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            netlify deploy --dir=dist --alias dev --message "Deploy from GitHub Actions: ${{ github.sha }}"
+          else
+            netlify deploy --dir=dist --message "Deploy from GitHub Actions: ${{ github.sha }}"
+          fi
