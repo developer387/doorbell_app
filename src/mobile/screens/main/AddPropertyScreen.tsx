@@ -37,6 +37,7 @@ export const AddPropertyScreen = () => {
   const { user } = useAuth();
 
   const [propertyId, setPropertyId] = useState<string>('');
+  const [scannedUrl, setScannedUrl] = useState<string>(''); // specific URL storage
 
   const [propertyName, setPropertyName] = useState('');
   const [address, setAddress] = useState('');
@@ -63,13 +64,23 @@ export const AddPropertyScreen = () => {
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     setScanned(true);
 
-    // Extract UUID from scanned QR code
-    // Assuming the QR code contains just the UUID or in a specific format
-    const uuid = data.trim();
+    // Normalize data
+    const trimmedData = data.trim();
+    let uuid = trimmedData;
+    let finalUrl = trimmedData;
+
+    // Check if the data is a URL with the format https://doorbell.guestregistration.com/<UUID>
+    if (trimmedData.includes('doorbell.guestregistration.com')) {
+      const parts = trimmedData.split('/');
+      uuid = parts[parts.length - 1];
+    } else {
+      // If it's just a UUID, construct the URL to enforce the format
+      finalUrl = `https://doorbell.guestregistration.com/${trimmedData}`;
+    }
 
     try {
-      // Check if this property already exists
-      const q = query(collection(db, 'properties'), where('qrCodeUUID', '==', uuid));
+      // Check if this property already exists by the strictly formatted URL
+      const q = query(collection(db, 'properties'), where('qrCodeUUID', '==', finalUrl));
       const querySnapshot = await getDocs(q);
 
       if (!querySnapshot.empty) {
@@ -78,6 +89,7 @@ export const AddPropertyScreen = () => {
 
         // Clear fields
         setPropertyId('');
+        setScannedUrl('');
         setPropertyName('');
         setAddress('');
         setLocation(null);
@@ -86,6 +98,7 @@ export const AddPropertyScreen = () => {
 
       setScanError(null);
       setPropertyId(uuid);
+      setScannedUrl(finalUrl);
       setCameraActive(false);
       setShowForm(true);
     } catch (error) {
@@ -183,7 +196,7 @@ export const AddPropertyScreen = () => {
         smartLocks: null,
         userId: user.uid,
         createdAt: new Date().toISOString(),
-        qrCodeUUID: propertyId, // Store the UUID from QR code
+        qrCodeUUID: scannedUrl || `https://doorbell.guestregistration.com/${id}`, // Store the full URL
         allowGuest: false, // Default to false when property is created
       };
 

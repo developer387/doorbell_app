@@ -7,7 +7,7 @@ export default function WebErrorScreen() {
     const navigation = useNavigation<any>();
 
     const handleGoBack = () => {
-        navigation.navigate('Scanner');
+        navigation.navigate('Welcome');
     };
 
     return (
@@ -23,7 +23,7 @@ export default function WebErrorScreen() {
                 </Text>
 
                 <TouchableOpacity style={styles.button} onPress={handleGoBack}>
-                    <Text style={styles.buttonText}>Scan Another QR Code</Text>
+                    <Text style={styles.buttonText}>Go to Home</Text>
                 </TouchableOpacity>
             </View>
         </View>

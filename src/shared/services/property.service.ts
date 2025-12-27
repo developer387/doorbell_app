@@ -11,7 +11,22 @@ export class PropertyService {
     static async findByQRCodeUUID(qrCodeUUID: string): Promise<Property | null> {
         try {
             const propertiesRef = collection(db, 'properties');
-            const q = query(propertiesRef, where('qrCodeUUID', '==', qrCodeUUID));
+
+            // Construct the URL if it's not already one
+            const rawUuid = qrCodeUUID.trim();
+            const url = rawUuid.includes('doorbell.guestregistration.com')
+                ? rawUuid
+                : `https://doorbell.guestregistration.com/${rawUuid}`;
+
+            // Search for *either* the UUID or the URL to be safe/backward compatible
+            // If the DB has just UUID, we find it. If it has URL, we find it.
+            // Note: If rawUuid is already a URL, the array will have duplicates, which is fine.
+            const searchValues = [rawUuid];
+            if (rawUuid !== url) {
+                searchValues.push(url);
+            }
+
+            const q = query(propertiesRef, where('qrCodeUUID', 'in', searchValues));
             const querySnapshot: QuerySnapshot<DocumentData> = await getDocs(q);
 
             if (querySnapshot.empty) {
