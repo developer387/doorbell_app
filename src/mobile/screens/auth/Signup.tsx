@@ -19,6 +19,7 @@ import { Title, Body, SmallText } from '@/typography';
 import { colors } from '@/styles/colors';
 import { Logo } from '@components/Logo';
 import { useAuth } from '@/context/UserContext';
+import { FirebaseError } from 'firebase/app';
 
 interface SignupFormData {
   name: string;
@@ -62,18 +63,20 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
 
       // Navigation will be handled automatically by RootNavigator
       // when AuthContext updates the user state
-    } catch (error: any) {
+    } catch (error) {
       console.error('Signup error:', error);
 
       // Handle specific Firebase errors
       let errorMessage = 'Failed to create account. Please try again.';
 
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'This email is already registered.';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Password should be at least 6 characters.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Please enter a valid email address.';
+      if (error instanceof FirebaseError) {
+        if (error.code === 'auth/email-already-in-use') {
+          errorMessage = 'This email is already registered.';
+        } else if (error.code === 'auth/weak-password') {
+          errorMessage = 'Password should be at least 6 characters.';
+        } else if (error.code === 'auth/invalid-email') {
+          errorMessage = 'Please enter a valid email address.';
+        }
       }
 
       setSubmitError(errorMessage);
@@ -96,11 +99,11 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={styles.keyboardView}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
@@ -230,6 +233,12 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
 }
 
 const styles = StyleSheet.create({
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

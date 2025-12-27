@@ -21,6 +21,9 @@ import { Title, Body, SmallText } from '@/typography';
 import { colors } from '@/styles/colors';
 import { Logo } from '@components/Logo';
 import { useAuth } from '@/context/UserContext';
+import { FirebaseError } from 'firebase/app';
+import GoogleIcon from '../../../../assets/google.png';
+import AppleIcon from '../../../../assets/apple.png';
 
 interface SignInFormData {
   email: string;
@@ -63,20 +66,22 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
 
       // Navigation will be handled automatically by RootNavigator
       // when AuthContext updates the user state
-    } catch (error: any) {
+    } catch (error) {
       console.error('Sign in error:', error);
 
       // Handle specific Firebase errors
       let errorMessage = 'Failed to sign in. Please try again.';
 
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = 'Invalid email or password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Please enter a valid email address.';
-      } else if (error.code === 'auth/user-disabled') {
-        errorMessage = 'This account has been disabled.';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many attempts. Please try again later.';
+      if (error instanceof FirebaseError) {
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+          errorMessage = 'Invalid email or password.';
+        } else if (error.code === 'auth/invalid-email') {
+          errorMessage = 'Please enter a valid email address.';
+        } else if (error.code === 'auth/user-disabled') {
+          errorMessage = 'This account has been disabled.';
+        } else if (error.code === 'auth/too-many-requests') {
+          errorMessage = 'Too many attempts. Please try again later.';
+        }
       }
 
       setSubmitError(errorMessage);
@@ -98,12 +103,12 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={styles.keyboardView}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar translucent barStyle="dark-content" />
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
@@ -194,8 +199,8 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
                 disabled={false}
                 leftIcon={
                   <Image
-                    source={require('../../../../assets/google.png')}
-                    style={{ width: 16, height: 16 }}
+                    source={GoogleIcon}
+                    style={styles.socialIcon}
                   />
                 }
               />
@@ -208,8 +213,8 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
                 disabled={false}
                 leftIcon={
                   <Image
-                    source={require('../../../../assets/apple.png')}
-                    style={{ width: 16, height: 16 }}
+                    source={AppleIcon}
+                    style={styles.socialIcon}
                   />
                 }
               />
@@ -246,6 +251,12 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -292,6 +303,10 @@ const styles = StyleSheet.create({
   btns: {
     display: 'flex',
     gap: 12,
+  },
+  socialIcon: {
+    width: 16,
+    height: 16,
   },
   footerText: {
     marginTop: 16,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { AuthNavigator } from './AuthNavigator';
 import { MainNavigator } from './MainNavigator';
 import { useUser } from '@/context/UserContext';
@@ -11,7 +11,7 @@ export const RootNavigator: React.FC = () => {
 
     if (isLoading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         );
@@ -23,3 +23,11 @@ export const RootNavigator: React.FC = () => {
         </NavigationContainer>
     );
 };
+
+const styles = StyleSheet.create({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+});

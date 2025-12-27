@@ -180,7 +180,7 @@ export default function WebGuestScreen() {
   };
 
   const stopRecording = () => {
-    if (Platform.OS === 'web' && mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (Platform.OS === 'web' && mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
     } else {
       setShowSendButton(true);
@@ -440,7 +440,7 @@ export default function WebGuestScreen() {
   useEffect(() => {
     if (!requestDocId || !property.id) return;
 
-    const unsubscribe = onSnapshot(doc(db, 'properties', property.id!, 'guestRequests', requestDocId), (snapshot) => { // Use property.id not propertyId
+    const unsubscribe = onSnapshot(doc(db, 'properties', property.id, 'guestRequests', requestDocId), (snapshot) => { // Use property.id not propertyId
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data?.status === 'declined') {
@@ -457,7 +457,7 @@ export default function WebGuestScreen() {
     return () => unsubscribe();
   }, [requestDocId, property.id]);
 
-  const handleEndCall = async (resetState: boolean = true) => {
+  const handleEndCall = async (resetState = true) => {
     console.log('🔌 Ending WebRTC call...');
 
     // Stop local tracks
