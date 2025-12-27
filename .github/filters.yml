@@ -1,0 +1,15 @@
+native:
+  - 'app.json'
+  - 'package.json'
+  - 'package-lock.json'
+  - 'eas.json'
+  - 'assets/icon.png'
+  - 'assets/splash-icon.png'
+  - 'assets/adaptive-icon.png'
+src:
+  - 'src/**'
+  - 'index.*'
+  - 'App.*'
+  - 'babel.config.js'
+  - 'metro.config.js'
+  - 'tsconfig.json'
