@@ -1,6 +1,6 @@
-import { collection, query, where, getDocs, QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { collection, query, where, getDocs, type QuerySnapshot, type DocumentData } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { Property } from '@/types/Property';
+import { type Property } from '@/types/Property';
 
 export class PropertyService {
     /**

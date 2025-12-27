@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { ScrollableChipList, ChipItem } from '@/components';
+import { ScrollableChipList, type ChipItem } from '@/components';
 import { Home, Building, Car } from 'lucide-react-native';
 
 /**

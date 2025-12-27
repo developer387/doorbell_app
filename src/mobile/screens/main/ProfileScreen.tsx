@@ -88,17 +88,17 @@ export const ProfileScreen: React.FC = () => {
           <MenuItem
             icon={<User size={24} color={COLORS.dark} />}
             label="Account"
-            onPress={() => { }}
+            onPress={() => Alert.alert('Account', 'Account settings coming soon.')}
           />
           <MenuItem
             icon={<MessageCircle size={24} color={COLORS.dark} />}
             label="FAQ"
-            onPress={() => { }}
+            onPress={() => Alert.alert('FAQ', 'FAQ section coming soon.')}
           />
           <MenuItem
             icon={<Bell size={24} color={COLORS.dark} />}
             label="Notification"
-            onPress={() => { }}
+            onPress={() => Alert.alert('Notifications', 'Notification settings coming soon.')}
           />
           <MenuItem
             icon={<Trash2 size={24} color={COLORS.dark} />}
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.md,
   },
   helpText: {
-    color: '#00BFA5',
+    color: COLORS.primary,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     textDecorationLine: 'underline',
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   },
   menuItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: COLORS.border,
   },
   menuItemContent: {
     flexDirection: 'row',
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   },
   logoutContainer: {
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: COLORS.border,
   },
   footer: {
     marginTop: 40,

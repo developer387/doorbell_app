@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Switch } from 'react-native';
-import { Body, SmallText, Title } from '@/typography';
+import { Body, SmallText } from '@/typography';
 import { ChevronRight } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { type Property } from '@/types/Property';
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 15,
         borderBottomWidth: 1,
-        borderBottomColor: '#F1F5F9',
+        borderBottomColor: colors.border,
     },
     actionSection: {
         flexDirection: 'row',

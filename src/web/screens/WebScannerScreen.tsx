@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, type CameraType, useCameraPermissions } from 'expo-camera';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { PropertyService } from '@/services/property.service';

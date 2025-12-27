@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, TextInput, type TextInputProps, type StyleProp, type ViewStyle } from 'react-native';
+import { View, TextInput, type TextInputProps, type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
+import type { NativeSyntheticEvent, TextInputFocusEventData } from 'react-native';
 import { inputStyles } from '@/styles/inputStyles';
 import { SmallText } from '@/typography';
 import { colors } from '@/styles/colors';
@@ -22,7 +23,6 @@ export const Input: React.FC<InputProps> = ({
   onChangeText,
   placeholder,
   secureTextEntry,
-  leftIcon,
   rightIcon,
   error,
   isValid,
@@ -34,14 +34,14 @@ export const Input: React.FC<InputProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
 
-  const handleFocus = (e: any) => {
+  const handleFocus = (e: NativeSyntheticEvent<TextInputFocusEventData>) => {
     setIsFocused(true);
-    if (onFocus) onFocus(e);
+    onFocus?.(e);
   };
 
-  const handleBlur = (e: any) => {
+  const handleBlur = (e: NativeSyntheticEvent<TextInputFocusEventData>) => {
     setIsFocused(false);
-    if (onBlur) onBlur(e);
+    onBlur?.(e);
   };
 
   let borderStyle = {};
@@ -59,7 +59,7 @@ export const Input: React.FC<InputProps> = ({
     <View style={[inputStyles.container, style]}>
       <View style={[inputStyles.inputContainer, borderStyle]}>
 
-        <View style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={styles.flexCenter}>
           {showFloatingLabel && label && (
             <SmallText style={inputStyles.floatingLabel}>{label}</SmallText>
           )}
@@ -73,8 +73,8 @@ export const Input: React.FC<InputProps> = ({
               inputStyles.input,
               showFloatingLabel && label ? inputStyles.inputWithFloatingLabel : {},
             ]}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
+            onFocus={handleFocus as unknown as TextInputProps['onFocus']}
+            onBlur={handleBlur as unknown as TextInputProps['onBlur']}
             {...props}
           />
         </View>
@@ -89,3 +89,10 @@ export const Input: React.FC<InputProps> = ({
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  flexCenter: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+});
