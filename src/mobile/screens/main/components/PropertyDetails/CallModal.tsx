@@ -6,7 +6,7 @@ import {
     mediaDevices,
     RTCIceCandidate,
     RTCSessionDescription,
-    MediaStream
+    type MediaStream
 } from 'react-native-webrtc';
 import { db } from '@/config/firebase';
 import { doc, collection, onSnapshot, addDoc, setDoc } from 'firebase/firestore';
@@ -64,7 +64,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                         height: 480,
                         frameRate: 30
                     }
-                }) as MediaStream;
+                });
 
                 if (!isMounted) {
                     stream.getTracks().forEach(t => t.stop());
@@ -84,7 +84,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                 // 4. Handle Remote Stream
                 (peer as any).ontrack = (event: any) => {
                     console.log('✅ Remote track received on mobile');
-                    if (event.streams && event.streams[0]) {
+                    if (event.streams?.[0]) {
                         setRemoteStream(event.streams[0]);
                     }
                 };
@@ -106,7 +106,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
 
                         await peer.setRemoteDescription(new RTCSessionDescription({
                             sdp: data.sdp as string,
-                            type: data.type as any
+                            type: data.type
                         }));
 
                         // Create Answer

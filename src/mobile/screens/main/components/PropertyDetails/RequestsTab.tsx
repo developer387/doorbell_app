@@ -8,7 +8,7 @@ import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase
 import { db } from '@/config/firebase';
 import { Loading } from '@/components';
 import { CallModal } from './CallModal';
-import { GuestRequest } from '@/types';
+import { type GuestRequest } from '@/types';
 
 interface RequestsTabProps {
   propertyId: string;
@@ -96,17 +96,17 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
     return (
-      date.toLocaleDateString('en-US', {
+      `${date.toLocaleDateString('en-US', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
-      }) +
-      ' ' +
+      }) 
+      } ${ 
       date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
-      })
+      })}`
     );
   };
 

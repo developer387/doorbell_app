@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { BottomSheet, Input, Button } from '@/components';
-import { Body, Title, SmallText } from '@/typography';
+import { Body, Title } from '@/typography';
 import { X, Copy } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import * as Clipboard from 'expo-clipboard';
@@ -63,7 +63,7 @@ export const PinSheet = ({ isVisible, onClose, currentPin, onSave, isLoading }: 
                 <View style={styles.pinDisplayContainer}>
                     <Title style={styles.pinText}>{currentPin}</Title>
                     <TouchableOpacity style={styles.copyButton} onPress={handleCopyPin}>
-                        <Body variant="primary" style={{ textDecorationLine: 'underline' }}>Copy Code</Body>
+                        <Body variant="primary" style={styles.underlineText}>Copy Code</Body>
                         <Copy size={20} color={colors.primary} />
                     </TouchableOpacity>
 
@@ -134,5 +134,8 @@ const styles = StyleSheet.create({
     },
     saveButton: {
         marginTop: 16,
+    },
+    underlineText: {
+        textDecorationLine: 'underline',
     },
 });

@@ -114,7 +114,7 @@ class SeamService {
       return {
         connect_webview_id: webview.connect_webview_id,
         url: webview.url,
-        status: webview.status as ConnectWebview['status'],
+        status: webview.status,
       };
     } catch (error) {
       console.error('Error creating Seam connect webview:', error);
@@ -133,7 +133,7 @@ class SeamService {
       return {
         connect_webview_id: webview.connect_webview_id,
         url: webview.url,
-        status: webview.status as ConnectWebview['status'],
+        status: webview.status,
       };
     } catch (error) {
       console.error('Error getting webview status:', error);

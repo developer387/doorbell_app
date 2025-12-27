@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Pressable, StyleSheet, ScrollView, ViewStyle, TextStyle } from 'react-native';
+import { View, Pressable, StyleSheet, ScrollView, type ViewStyle, type TextStyle } from 'react-native';
 import { MediumText, SmallText } from '@/typography';
 import { colors } from '@/styles/colors';
-import { LucideIcon } from 'lucide-react-native';
+import { type LucideIcon } from 'lucide-react-native';
 
 export interface ChipItem {
   label: string;

@@ -37,7 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
         };
 
-        loadUserFromStorage();
+        void loadUserFromStorage();
     }, []);
 
     // Listen to Firebase auth state changes

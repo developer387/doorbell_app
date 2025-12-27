@@ -146,7 +146,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                         styles.sheetContainer,
                         {
                             transform: [{ translateY }],
-                            maxHeight: maxHeight,
+                            maxHeight,
                         },
                     ]}
                 >
