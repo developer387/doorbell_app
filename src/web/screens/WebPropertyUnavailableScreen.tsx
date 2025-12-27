@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Home, Ban } from 'lucide-react-native';
+import { Ban } from 'lucide-react-native';
 
 export default function WebPropertyUnavailableScreen() {
     const navigation = useNavigation<any>();
 
     const handleGoBack = () => {
-        navigation.navigate('Scanner');
+        navigation.navigate('Welcome');
     };
 
     return (
@@ -23,7 +23,7 @@ export default function WebPropertyUnavailableScreen() {
                 </Text>
 
                 <TouchableOpacity style={styles.button} onPress={handleGoBack}>
-                    <Text style={styles.buttonText}>Back to Scanner</Text>
+                    <Text style={styles.buttonText}>Go to Home</Text>
                 </TouchableOpacity>
             </View>
         </View>
