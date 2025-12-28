@@ -1,18 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Modal, StyleSheet, View, TouchableOpacity, Text } from 'react-native';
-import {
-    RTCPeerConnection,
-    RTCView,
-    mediaDevices,
-    RTCIceCandidate,
-    RTCSessionDescription,
-    type MediaStream
-} from 'react-native-webrtc';
+import React, { useEffect, useState } from 'react';
+import { Modal, StyleSheet, View, TouchableOpacity, Text, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { db } from '@/config/firebase';
-import { doc, collection, onSnapshot, addDoc, setDoc } from 'firebase/firestore';
-import { PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react-native';
+import { doc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
+import { X, Check } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
-import { Camera } from 'expo-camera';
+import { Video, ResizeMode } from 'expo-av';
+import { type Property } from '@/types/Property';
 
 interface CallModalProps {
     visible: boolean;
@@ -22,171 +15,74 @@ interface CallModalProps {
 }
 
 export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModalProps) => {
-    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-    const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-    const [isMuted, setIsMuted] = useState(false);
-    const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-
-    const pc = useRef<RTCPeerConnection | null>(null);
-    const signalingPath = `properties/${propertyId}/guestRequests/${channelId}/signaling`;
-
-    const configuration = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-        ],
-    };
+    const [requestData, setRequestData] = useState<any>(null);
+    const [property, setProperty] = useState<Property | null>(null);
+    const [selectedLocks, setSelectedLocks] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (!visible) return;
+        if (!visible || !channelId || !propertyId) return;
+        setIsLoading(true);
 
-        let isMounted = true;
-
-        const startCall = async () => {
+        const fetchProperty = async () => {
             try {
-                // 0. Request Permissions
-                const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
-                const { status: micStatus } = await Camera.requestMicrophonePermissionsAsync();
-
-                if (cameraStatus !== 'granted' || micStatus !== 'granted') {
-                    console.log('⛔ Permissions not granted');
-                    onClose();
-                    return;
+                const docRef = doc(db, 'properties', propertyId);
+                const snap = await getDoc(docRef);
+                if (snap.exists()) {
+                    setProperty(snap.data() as Property);
                 }
-
-                // 1. Get Local Stream
-                const stream = await mediaDevices.getUserMedia({
-                    audio: true,
-                    video: {
-                        facingMode: 'user',
-                        width: 640,
-                        height: 480,
-                        frameRate: 30
-                    }
-                });
-
-                if (!isMounted) {
-                    stream.getTracks().forEach(t => t.stop());
-                    return;
-                }
-                setLocalStream(stream);
-
-                // 2. Create Peer Connection
-                const peer = new RTCPeerConnection(configuration);
-                pc.current = peer;
-
-                // 3. Add tracks
-                stream.getTracks().forEach(track => {
-                    peer.addTrack(track, stream);
-                });
-
-                // 4. Handle Remote Stream
-                (peer as any).ontrack = (event: any) => {
-                    console.log('✅ Remote track received on mobile');
-                    if (event.streams?.[0]) {
-                        setRemoteStream(event.streams[0]);
-                    }
-                };
-
-                // 5. Handle ICE Candidates
-                (peer as any).onicecandidate = async (event: any) => {
-                    if (event.candidate) {
-                        console.log('📤 Sending ICE Candidate from mobile');
-                        const remoteIceCol = collection(db, signalingPath, 'remoteIceCandidates');
-                        await addDoc(remoteIceCol, event.candidate.toJSON());
-                    }
-                };
-
-                // 6. Signaling: Listen for Offer
-                const unsubOffer = onSnapshot(doc(db, signalingPath, 'offer'), async (snapshot) => {
-                    const data = snapshot.data();
-                    if (data?.sdp && data?.type && !(peer as any).remoteDescription) {
-                        console.log('📥 Received Offer on mobile');
-
-                        await peer.setRemoteDescription(new RTCSessionDescription({
-                            sdp: data.sdp as string,
-                            type: data.type
-                        }));
-
-                        // Create Answer
-                        const answer = await peer.createAnswer();
-                        await peer.setLocalDescription(answer);
-
-                        // Send Answer
-                        await setDoc(doc(db, signalingPath, 'answer'), {
-                            sdp: answer.sdp,
-                            type: answer.type
-                        });
-                    }
-                });
-
-                // 7. Signaling: Listen for Guest ICE Candidates
-                const iceCol = collection(db, signalingPath, 'iceCandidates', 'candidates');
-                const unsubIce = onSnapshot(iceCol, (snapshot) => {
-                    snapshot.docChanges().forEach(async (change) => {
-                        if (change.type === 'added') {
-                            const data = change.doc.data();
-                            console.log('📥 Received Guest ICE Candidate on mobile');
-                            if (pc.current) {
-                                await pc.current.addIceCandidate(new RTCIceCandidate(data));
-                            }
-                        }
-                    });
-                });
-
-                (peer as any).onconnectionstatechange = () => {
-                    const state = (peer as any).connectionState;
-                    console.log('🔗 Mobile Connection State:', state);
-                    if (state === 'closed' || state === 'failed') {
-                        handleEndCall();
-                    }
-                };
-
-                return () => {
-                    unsubOffer();
-                    unsubIce();
-                    stream.getTracks().forEach(t => t.stop());
-                };
-
-            } catch (error) {
-                console.error('❌ Error starting WebRTC call on mobile:', error);
+            } catch (e) {
+                console.error("Error fetching property", e);
             }
         };
 
-        startCall();
+        fetchProperty();
 
-        return () => {
-            isMounted = false;
-        };
-    }, [visible]);
-
-    const handleEndCall = () => {
-        localStream?.getTracks().forEach(track => track.stop());
-        pc.current?.close();
-        pc.current = null;
-        setLocalStream(null);
-        setRemoteStream(null);
-        onClose();
-    };
-
-    const toggleMute = () => {
-        if (localStream) {
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                setIsMuted(!audioTrack.enabled);
+        const unsub = onSnapshot(doc(db, 'properties', propertyId, 'guestRequests', channelId), (snap) => {
+            if (snap.exists()) {
+                setRequestData(snap.data());
             }
+            setIsLoading(false);
+        });
+
+        return () => unsub();
+    }, [visible, channelId, propertyId]);
+
+    const handleGrantAccess = async () => {
+        if (selectedLocks.length === 0) {
+            Alert.alert("No Locks Selected", "Please select at least one lock to open for the guest, or decline the request.");
+            return;
+        }
+
+        try {
+            await updateDoc(doc(db, 'properties', propertyId, 'guestRequests', channelId), {
+                status: 'accepted',
+                allowedLocks: selectedLocks,
+                respondedAt: new Date().toISOString()
+            });
+            onClose();
+        } catch (error) {
+            Alert.alert("Error", "Failed to grant access");
         }
     };
 
-    const toggleVideo = () => {
-        if (localStream) {
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.enabled = !videoTrack.enabled;
-                setIsVideoEnabled(videoTrack.enabled);
-            }
+    const handleDecline = async () => {
+        try {
+            await updateDoc(doc(db, 'properties', propertyId, 'guestRequests', channelId), {
+                status: 'declined',
+                respondedAt: new Date().toISOString()
+            });
+            onClose();
+        } catch (error) {
+            Alert.alert("Error", "Failed to decline request");
+        }
+    };
+
+    const toggleLockSelection = (deviceId: string) => {
+        if (selectedLocks.includes(deviceId)) {
+            setSelectedLocks(prev => prev.filter(id => id !== deviceId));
+        } else {
+            setSelectedLocks(prev => [...prev, deviceId]);
         }
     };
 
@@ -197,53 +93,75 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
             visible={visible}
             transparent={false}
             animationType="slide"
-            onRequestClose={handleEndCall}
+            onRequestClose={onClose}
         >
             <View style={styles.container}>
-                {/* Remote Stream (Full Screen) */}
-                <View style={styles.fullScreenVideo}>
-                    {remoteStream ? (
-                        <RTCView
-                            streamURL={remoteStream.toURL()}
-                            style={styles.rtcView}
-                            objectFit="cover"
-                        />
-                    ) : (
-                        <View style={styles.waitingContainer}>
-                            <Text style={styles.waitingText}>Connecting to guest...</Text>
+                <View style={styles.header}>
+                    <Text style={styles.title}>Guest Request 🔔</Text>
+                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                        <X color="white" size={24} />
+                    </TouchableOpacity>
+                </View>
+
+                {isLoading ? (
+                    <View style={styles.center}>
+                        <ActivityIndicator size="large" color="#4ade80" />
+                    </View>
+                ) : (
+                    <View style={styles.content}>
+                        {/* Video Section */}
+                        <View style={styles.videoContainer}>
+                            {requestData?.videoUrl ? (
+                                <Video
+                                    style={styles.video}
+                                    source={{ uri: requestData.videoUrl }}
+                                    useNativeControls
+                                    resizeMode={ResizeMode.CONTAIN}
+                                    isLooping
+                                    shouldPlay
+                                />
+                            ) : (
+                                <View style={styles.placeholderVideo}>
+                                    <Text style={styles.placeholderText}>Video loading or unavailable...</Text>
+                                </View>
+                            )}
                         </View>
-                    )}
-                </View>
 
-                {/* Local Stream (PIP) */}
-                <View style={styles.pipContainer}>
-                    {localStream && isVideoEnabled && (
-                        <RTCView
-                            streamURL={localStream.toURL()}
-                            style={styles.rtcView}
-                            objectFit="cover"
-                            zOrder={1}
-                        />
-                    )}
-                </View>
+                        <Text style={styles.sectionTitle}>Select Access to Grant:</Text>
 
-                {/* Controls */}
-                <View style={styles.controls}>
-                    <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
-                        {isMuted ? <MicOff color="white" size={24} /> : <Mic color="white" size={24} />}
-                    </TouchableOpacity>
+                        {/* Locks List */}
+                        <ScrollView style={styles.locksList}>
+                            {property?.smartLocks?.map((lock) => {
+                                const isSelected = selectedLocks.includes(lock.device_id);
+                                return (
+                                    <TouchableOpacity
+                                        key={lock.device_id}
+                                        style={[styles.lockItem, isSelected && styles.lockItemSelected]}
+                                        onPress={() => toggleLockSelection(lock.device_id)}
+                                    >
+                                        <View style={styles.lockInfo}>
+                                            <Text style={styles.lockName}>{lock.display_name}</Text>
+                                            <Text style={styles.lockType}>{lock.device_type}</Text>
+                                        </View>
+                                        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                                            {isSelected && <Check size={16} color="black" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
 
-                    <TouchableOpacity
-                        style={[styles.controlButton, styles.endCallButton]}
-                        onPress={handleEndCall}
-                    >
-                        <PhoneOff color="white" size={28} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.controlButton} onPress={toggleVideo}>
-                        {isVideoEnabled ? <Video color="white" size={24} /> : <VideoOff color="white" size={24} />}
-                    </TouchableOpacity>
-                </View>
+                        {/* Action Buttons */}
+                        <View style={styles.actions}>
+                            <TouchableOpacity style={[styles.button, styles.declineButton]} onPress={handleDecline}>
+                                <Text style={styles.buttonText}>Decline</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.button, styles.acceptButton]} onPress={handleGrantAccess}>
+                                <Text style={[styles.buttonText, { color: 'black' }]}>Grant Access</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
             </View>
         </Modal>
     );
@@ -252,57 +170,124 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#000',
+        backgroundColor: '#1a1a1a', // Dark theme matches guest app
+        paddingTop: 50,
     },
-    fullScreenVideo: {
-        flex: 1,
-    },
-    rtcView: {
-        flex: 1,
-    },
-    pipContainer: {
-        position: 'absolute',
-        top: 50,
-        right: 20,
-        width: 120,
-        height: 180,
-        borderRadius: 12,
-        overflow: 'hidden',
-        backgroundColor: '#222',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
-    },
-    controls: {
-        position: 'absolute',
-        bottom: 50,
-        left: 0,
-        right: 0,
+    header: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        gap: 30,
+        paddingHorizontal: 20,
+        marginBottom: 20,
     },
-    controlButton: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        justifyContent: 'center',
-        alignItems: 'center',
+    title: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: 'white',
     },
-    endCallButton: {
-        width: 65,
-        height: 65,
-        borderRadius: 32.5,
-        backgroundColor: colors.error || '#ff4444',
+    closeButton: {
+        padding: 8,
     },
-    waitingContainer: {
+    center: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    waitingText: {
+    content: {
+        flex: 1,
+        paddingHorizontal: 20,
+    },
+    videoContainer: {
+        width: '100%',
+        height: 300,
+        backgroundColor: 'black',
+        borderRadius: 16,
+        marginBottom: 24,
+        overflow: 'hidden',
+    },
+    video: {
+        width: '100%',
+        height: '100%',
+    },
+    placeholderVideo: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderText: {
+        color: '#666',
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: 'white',
+        marginBottom: 16,
+    },
+    locksList: {
+        flex: 1,
+        marginBottom: 20,
+    },
+    lockItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#333',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    lockItemSelected: {
+        borderColor: '#4ade80',
+        backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    },
+    lockInfo: {
+        flex: 1,
+    },
+    lockName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: 'white',
+    },
+    lockType: {
+        fontSize: 12,
+        color: '#999',
+    },
+    checkbox: {
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: '#666',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    checkboxSelected: {
+        backgroundColor: '#4ade80',
+        borderColor: '#4ade80',
+    },
+    actions: {
+        flexDirection: 'row',
+        gap: 16,
+        marginBottom: 30,
+        height: 56,
+    },
+    button: {
+        flex: 1,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    declineButton: {
+        backgroundColor: '#ef4444',
+    },
+    acceptButton: {
+        backgroundColor: '#4ade80',
+    },
+    buttonText: {
         color: 'white',
         fontSize: 16,
-    }
+        fontWeight: 'bold',
+    },
 });

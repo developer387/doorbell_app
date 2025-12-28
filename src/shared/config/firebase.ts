@@ -5,20 +5,22 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
-// TODO: Replace with your actual Firebase configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyDDl_KK66dksJ4cdY73LkN0rbjrD_AAox8",
-    authDomain: "doorbell-165ac.firebaseapp.com",
-    projectId: "doorbell-165ac",
-    storageBucket: "doorbell-165ac.firebasestorage.app",
-    messagingSenderId: "507464378158",
-    appId: "1:507464378158:web:4830dc3fea451df24bbcbf"
+    apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY as string,
+    authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
+    projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID as string,
+    storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET as string,
+    messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID as string,
+    appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID as string
 };
 
 let app: FirebaseApp;
 let auth: Auth;
 
 if (!getApps().length) {
+    if (!firebaseConfig.apiKey) {
+        console.error('Firebase API Key is missing. Check your .env file and ensure EXPO_PUBLIC_FIREBASE_API_KEY is set.');
+    }
     app = initializeApp(firebaseConfig);
 } else {
     app = getApp();
