@@ -1,11 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type Property } from '@/types/Property';
-import * as Location from 'expo-location';
 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
@@ -17,25 +16,6 @@ const generateGuestId = (): string => {
 };
 
 type WebGuestScreenRouteProp = RouteProp<{ params: { property: Property } }, 'params'>;
-
-// Helper: Calculate distance in meters
-function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad(lat2 - lat1);
-  var dLon = deg2rad(lon2 - lon1);
-  var a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2)
-    ;
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  var d = R * c; // Distance in km
-  return d * 1000; // Distance in meters
-}
-
-function deg2rad(deg: number) {
-  return deg * (Math.PI / 180)
-}
 
 export default function WebGuestScreen() {
   const route = useRoute<WebGuestScreenRouteProp>();
@@ -55,8 +35,6 @@ export default function WebGuestScreen() {
 
   // -- Checks State --
   const [hasFace, setHasFace] = useState(false);
-  const [isValidLocation, setIsValidLocation] = useState(false);
-  const [isCheckingLocation, setIsCheckingLocation] = useState(false);
 
   // -- Permission State --
   const [permission, requestPermission] = useCameraPermissions();
@@ -148,63 +126,10 @@ export default function WebGuestScreen() {
     return () => unsubscribe();
   }, [requestDocId, property.id]);
 
-  // -- Location Handler --
-  const verifyLocation = async (): Promise<boolean> => {
-    setIsCheckingLocation(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to verify you are at the property.');
-        setIsCheckingLocation(false);
-        return false;
-      }
-
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-
-      if (!property.location || !property.location.latitude || !property.location.longitude) {
-        // Fallback if property has no location set, assume checks pass for demo or alert error?
-        // Safer to alert error in prod, but for now log it.
-        console.warn("Property has no location set. Skipping check.");
-        setIsCheckingLocation(false);
-        setIsValidLocation(true); // Allow if property location missing to avoid infinite block
-        return true;
-      }
-
-      const distance = getDistanceFromLatLonInM(
-        location.coords.latitude,
-        location.coords.longitude,
-        property.location.latitude,
-        property.location.longitude
-      );
-
-      console.log(`User distance from property: ${distance.toFixed(2)}m`);
-
-      if (distance <= 3) {
-        setIsValidLocation(true);
-        setIsCheckingLocation(false);
-        return true;
-      } else {
-        Alert.alert('Too Far', `You must be within 3 meters of the property. Current distance: ~${distance.toFixed(0)}m`);
-        setIsCheckingLocation(false);
-        return false;
-      }
-
-    } catch (error) {
-      console.error('Location check failed', error);
-      Alert.alert('Error', 'Could not verify location.');
-      setIsCheckingLocation(false);
-      return false;
-    }
-  };
-
   // -- Camera & Recording Handlers --
 
   const handleStartPreview = async () => {
-    // 1. Check Location first
-    const locationValid = await verifyLocation();
-    if (!locationValid) return;
-
-    // 2. Request Camera
+    // 1. Request Camera
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
@@ -561,13 +486,8 @@ export default function WebGuestScreen() {
             <TouchableOpacity
               style={styles.ringButtonCapsule}
               onPress={handleStartPreview}
-              disabled={isCheckingLocation}
             >
-              {isCheckingLocation ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Text style={styles.ringButtonText}>Ring DoorBell</Text>
-              )}
+              <Text style={styles.ringButtonText}>Ring DoorBell</Text>
             </TouchableOpacity>
           )}
         </>
@@ -684,6 +604,13 @@ export default function WebGuestScreen() {
           </Text>
           <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>
             <Text style={styles.linkText}>I have an access pin</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.linkButton, { marginTop: 10 }]}
+            onPress={() => Linking.openURL('https://exp-shell-app-assets.s3.us-west-1.amazonaws.com/android/%40developer387/doorbell_app-b9248740-0255-4424-a781-01300985223c-signed.apk')}
+          >
+            <Text style={[styles.linkText, { fontSize: 14, color: '#666' }]}>Download Android App</Text>
           </TouchableOpacity>
         </View>
       )}

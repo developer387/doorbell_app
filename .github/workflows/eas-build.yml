@@ -18,8 +18,9 @@ on:
         type: choice
         options:
           - development
+          - preview
           - production
-        default: 'development'
+        default: 'preview'
 
 jobs:
   build:
@@ -46,8 +47,55 @@ jobs:
 
       - name: Build Android
         if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' }}
-        run: eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive
+        run: |
+          eas build --platform android --profile ${{ github.event.inputs.profile }} --non-interactive --json > build-output.json
+          cat build-output.json
+
+      - name: Get APK Download URL
+        if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' }}
+        id: get-url
+        run: |
+          BUILD_URL=$(cat build-output.json | jq -r '.[0].artifacts.buildUrl // empty')
+          if [ -n "$BUILD_URL" ]; then
+            echo "apk_url=$BUILD_URL" >> $GITHUB_OUTPUT
+            echo "✅ APK Download URL: $BUILD_URL"
+          fi
+
+      - name: Download APK
+        if: ${{ (github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all') && steps.get-url.outputs.apk_url != '' }}
+        run: |
+          curl -L -o doorbell-app.apk "${{ steps.get-url.outputs.apk_url }}"
+          ls -lh doorbell-app.apk
+
+      - name: Upload APK as Artifact
+        if: ${{ (github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all') && steps.get-url.outputs.apk_url != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: doorbell-app-${{ github.event.inputs.profile }}-${{ github.run_number }}
+          path: doorbell-app.apk
+          retention-days: 30
 
       - name: Build iOS
         if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all' }}
         run: eas build --platform ios --profile ${{ github.event.inputs.profile }} --non-interactive
+
+      - name: Comment Build Info
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let message = '## 🚀 Build Complete\n\n';
+            message += `**Profile:** ${{ github.event.inputs.profile }}\n`;
+            message += `**Platform:** ${{ github.event.inputs.platform }}\n\n`;
+            
+            if ('${{ steps.get-url.outputs.apk_url }}') {
+              message += '### 📱 Download APK\n\n';
+              message += 'The APK is available as an artifact in this workflow run.\n';
+              message += `[Download from GitHub Actions](${context.payload.repository.html_url}/actions/runs/${context.runId})\n\n`;
+              message += 'Or download directly from EAS:\n';
+              message += `[EAS Build URL](${{ steps.get-url.outputs.apk_url }})\n`;
+            }
+            
+            console.log(message);
+
