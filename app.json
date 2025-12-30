@@ -58,6 +58,7 @@
         "projectId": "b264a3ec-0712-4ea2-a5c5-a353f7dbbe6a"
       }
     },
-    "owner": "lodge-compliance"
+    "owner": "lodge-compliance",
+    "jsEngine": "hermes"
   }
 }
