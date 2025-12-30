@@ -360,7 +360,7 @@ export default function WebGuestScreen() {
 
   const handleViewLocks = () => {
     setIsPinModalVisible(false);
-    // When using PIN, we unlock ALL locks or specific ones? 
+    // When using PIN, we unlock ALL locks or specific ones?
     // Usually PIN guests have full access or defined access. Assuming full for PIN.
     setAllowedLocks(property.smartLocks.map(l => l.device_id));
     setShowLocks(true);
@@ -601,14 +601,26 @@ export default function WebGuestScreen() {
         <View style={styles.footer}>
           <Text style={styles.disclaimer}>
             This triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
-          </Text>
+          </Text>p
           <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>
             <Text style={styles.linkText}>I have an access pin</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.linkButton, { marginTop: 10 }]}
-            onPress={() => Linking.openURL('https://exp-shell-app-assets.s3.us-west-1.amazonaws.com/android/%40developer387/doorbell_app-b9248740-0255-4424-a781-01300985223c-signed.apk')}
+            onPress={() => {
+              const apkUrl = 'application-3383c39d-4b0a-41ad-a70f-fb04b9626fb8';
+              if (Platform.OS === 'web') {
+                const link = document.createElement('a');
+                link.href = apkUrl;
+                link.download = 'DoorbellApp_Guest.apk'; // Suggested filename
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              } else {
+                Linking.openURL(apkUrl);
+              }
+            }}
           >
             <Text style={[styles.linkText, { fontSize: 14, color: '#666' }]}>Download Android App</Text>
           </TouchableOpacity>
