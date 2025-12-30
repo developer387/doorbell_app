@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -604,6 +604,13 @@ export default function WebGuestScreen() {
           </Text>
           <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>
             <Text style={styles.linkText}>I have an access pin</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.linkButton, { marginTop: 10 }]}
+            onPress={() => Linking.openURL('https://exp-shell-app-assets.s3.us-west-1.amazonaws.com/android/%40developer387/doorbell_app-b9248740-0255-4424-a781-01300985223c-signed.apk')}
+          >
+            <Text style={[styles.linkText, { fontSize: 14, color: '#666' }]}>Download Android App</Text>
           </TouchableOpacity>
         </View>
       )}
