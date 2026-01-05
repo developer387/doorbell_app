@@ -330,26 +330,32 @@ export default function WebGuestScreen() {
           if (propertyData.guests) guests = propertyData.guests;
         }
       }
-      const matchingGuest = guests.find(g => g.accessPin === fullPin);
-      if (matchingGuest) {
-        const now = new Date();
-        const start = new Date(matchingGuest.startTime);
-        const end = new Date(matchingGuest.endTime);
-        const bufferMs = 60 * 1000;
-        if (now.getTime() < (start.getTime() - bufferMs)) {
-          setPinError('Access not yet active');
-          setIsVerifyingPin(false);
-          return;
-        }
-        if (now.getTime() > (end.getTime() + bufferMs)) {
-          setPinError('Access expired');
-          setIsVerifyingPin(false);
-          return;
-        }
+      // Check Property Master PIN
+      if (propertyData.pinCode === fullPin) {
         setIsPinVerified(true);
         setPinError('');
       } else {
-        setPinError('PIN Incorrect, Try Again');
+        const matchingGuest = guests.find(g => g.accessPin === fullPin);
+        if (matchingGuest) {
+          const now = new Date();
+          const start = new Date(matchingGuest.startTime);
+          const end = new Date(matchingGuest.endTime);
+          const bufferMs = 60 * 1000;
+          if (now.getTime() < (start.getTime() - bufferMs)) {
+            setPinError('Access not yet active');
+            setIsVerifyingPin(false);
+            return;
+          }
+          if (now.getTime() > (end.getTime() + bufferMs)) {
+            setPinError('Access expired');
+            setIsVerifyingPin(false);
+            return;
+          }
+          setIsPinVerified(true);
+          setPinError('');
+        } else {
+          setPinError('PIN Incorrect, Try Again');
+        }
       }
     } catch (error) {
       setPinError('Error verifying PIN, please try again');

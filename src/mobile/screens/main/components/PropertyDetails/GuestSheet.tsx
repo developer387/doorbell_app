@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert } from 'react-native';
 import { BottomSheet, Input, Button } from '@/components';
 import { Body, SmallText, Title } from '@/typography';
 import { X, User, Clock } from 'lucide-react-native';
@@ -101,6 +101,12 @@ export const GuestSheet = ({
     };
 
     const handleSave = async () => {
+        // Validate Time Range
+        if (startTime.getTime() >= endTime.getTime()) {
+            Alert.alert('Invalid Schedule', 'End time must be after Start time');
+            return;
+        }
+
         const data: any = {
             name: name.trim(),
             avatar,
