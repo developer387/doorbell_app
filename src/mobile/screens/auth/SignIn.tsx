@@ -56,6 +56,11 @@ export const SignIn: React.FC<SignInProps> = ({ navigation }) => {
     },
   });
 
+  React.useEffect(() => {
+    const subscription = watch(() => setSubmitError(null));
+    return () => subscription.unsubscribe();
+  }, [watch]);
+
   const onSubmit = async (data: SignInFormData) => {
     try {
       setIsSubmitting(true);

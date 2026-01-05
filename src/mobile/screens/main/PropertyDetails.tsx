@@ -213,6 +213,7 @@ export const PropertyDetails = () => {
         onClose={() => setActiveSheet('none')}
         isLoading={actions.isSaving}
         initialGuest={selectedGuest}
+        smartLocks={property?.smartLocks || []}
         generatePin={actions.generatePin}
         onSave={async (data) => {
           if (activeSheet === 'addGuest') {

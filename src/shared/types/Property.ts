@@ -19,6 +19,7 @@ export interface Guest {
   startTime: string; // ISO string
   endTime: string; // ISO string
   accessPin: string;
+  allowedLocks?: string[]; // IDs of locks this guest can access
   createdAt: string;
 }
 

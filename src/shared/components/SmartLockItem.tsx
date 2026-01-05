@@ -39,9 +39,10 @@ interface SmartLockItemProps {
   lock: LockState;
   onLockStateChange: (deviceId: string, newState: Partial<LockState>) => void;
   onEdit: () => void;
+  theme?: 'light' | 'dark';
 }
 
-export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateChange, onEdit }) => {
+export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateChange, onEdit, theme = 'light' }) => {
   const [countdown, setCountdown] = useState<string | null>(null);
   const [showTemporaryUnlockControls, setShowTemporaryUnlockControls] = useState(false);
   const [duration, setDuration] = useState<string>('1');
@@ -257,8 +258,10 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
     isTemporaryUnlockActive || isInstantUnlockActive || isUnlocked || isCreatingAccessCode;
   const swipeDisabled = controlsDisabled || isUnlocking;
 
+  const isDark = theme === 'dark';
+
   return (
-    <View style={styles.lockCard}>
+    <View style={[styles.lockCard, isDark && styles.lockCardDark]}>
       <View style={styles.lockHeader}>
         <View style={styles.lockHeaderLeft}>
           <Image
@@ -268,19 +271,21 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
           />
           <View style={styles.lockInfo}>
             <View style={styles.lockNameRow}>
-              <Body>{lock.display_name}</Body>
-              <CircleCheckBig size={16} color={colors.primary} strokeWidth={3} />
+              <Body style={isDark ? { color: colors.white } : undefined}>{lock.display_name}</Body>
+              {/* <CircleCheckBig size={16} color={colors.primary} strokeWidth={3} /> */}
             </View>
-            <SmallText variant="secondary">{lock.manufacturer}</SmallText>
+            <SmallText variant={isDark ? undefined : "secondary"} style={isDark ? { color: '#888' } : undefined}>
+              {lock.manufacturer}
+            </SmallText>
           </View>
         </View>
         <TouchableOpacity onPress={onEdit}>
-          <SmallText variant="primary">Edit</SmallText>
+          <SmallText variant="primary" style={isDark ? { display: 'none' } : undefined}>Edit</SmallText>
         </TouchableOpacity>
       </View>
 
       <View style={styles.statusSection}>
-        <Body weight="bolder">Status</Body>
+        <Body weight="bolder" style={isDark ? { color: colors.white } : undefined}>Status</Body>
         <View style={[styles.statusBadge, isUnlocked ? styles.statusOpen : styles.statusClosed]}>
           {isUnlocked ? (
             <>
@@ -289,8 +294,14 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
             </>
           ) : (
             <>
-              <LockIcon size={12} color={colors.textSecondary} />
-              <SmallText variant="secondary">Closed</SmallText>
+              {isDark ? (
+                <LockIcon size={16} color={colors.white} />
+              ) : (
+                <>
+                  <LockIcon size={12} color={colors.textSecondary} />
+                  <SmallText variant="secondary">Closed</SmallText>
+                </>
+              )}
             </>
           )}
         </View>
@@ -324,17 +335,18 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
             </View>
           </View>
 
-          <Body weight="bolder" style={styles.durationLabel}>
+          <Body weight="bolder" style={[styles.durationLabel, isDark && { color: colors.white }]}>
             How long do you want to unlock it for?
           </Body>
 
           <View style={styles.durationInputRow}>
             <TextInput
-              style={styles.durationInput}
+              style={[styles.durationInput, isDark && { color: colors.white, borderColor: '#444', backgroundColor: '#333' }]}
               value={duration}
               onChangeText={setDuration}
               keyboardType="numeric"
               placeholder="1"
+              placeholderTextColor={isDark ? '#888' : undefined}
               editable={!isCreatingAccessCode}
             />
             <View style={styles.unitDropdownWrapper}>
@@ -349,11 +361,11 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
+              style={[styles.button, styles.cancelButton, isDark && { backgroundColor: '#333', borderColor: '#444' }]}
               onPress={handleCancelTemporaryUnlock}
               disabled={isCreatingAccessCode}
             >
-              <Body>{isCreatingAccessCode ? '...' : 'Cancel'}</Body>
+              <Body style={isDark ? { color: colors.white } : undefined}>{isCreatingAccessCode ? '...' : 'Cancel'}</Body>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, styles.confirmButton]}
@@ -374,11 +386,12 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
         ref={swipeContainerRef}
         onLayout={(event) => {
           const { width } = event.nativeEvent.layout;
-          // Button: 32px, left: 4px, right padding: ~20px
-          maxSwipeDistance.current = width - 32 - 4 - 20;
+          // Button: 48px, left: 4px, right padding: 4px
+          maxSwipeDistance.current = width - 48 - 8;
         }}
         style={[
           styles.swipeContainer,
+          isDark && styles.swipeContainerDark,
           swipeDisabled && styles.swipeContainerDisabled,
           (isTemporaryUnlockActive || isInstantUnlockActive) && styles.swipeContainerActive,
         ]}
@@ -387,6 +400,7 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
         <Animated.View
           style={[
             styles.swipeButton,
+            isDark && styles.swipeButtonDark,
             {
               transform: [{ translateX: slideAnim }],
             },
@@ -398,15 +412,19 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
             {isUnlocked ? (
               <UnlockIcon size={16} color={colors.white} />
             ) : (
-              <LockIcon size={16} color={colors.white} />
+              <LockIcon size={20} color={colors.white} />
             )}
           </View>
         </Animated.View>
         <View style={styles.swipeTextContainer}>
-          <Body>
+          <Body style={[isDark ? { color: colors.white } : undefined, { textAlign: 'center' }]}>
             {isUnlocking ? 'Unlocking...' : isUnlocked ? 'Unlocked' : 'Swipe for Instant unlock'}
           </Body>
-          {!isUnlocked && <ChevronsRight size={20} color={colors.dark} strokeWidth={2} />}
+          {!isUnlocked && (
+            <View style={{ position: 'absolute', right: 20 }}>
+              <ChevronsRight size={20} color={isDark ? colors.white : colors.dark} strokeWidth={2} />
+            </View>
+          )}
         </View>
       </View>
 
@@ -415,8 +433,8 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
         onPress={handleToggleTemporaryUnlock}
         disabled={controlsDisabled}
       >
-        <Body>Set temporary unlock passcode</Body>
-        <ChevronsRight size={20} color={colors.dark} strokeWidth={2} />
+        <Body style={{ color: colors.black }}>Set temporary unlock passcode</Body>
+        <ChevronsRight size={20} color={colors.black} strokeWidth={2} />
       </TouchableOpacity>
     </View>
   );
@@ -425,11 +443,16 @@ export const SmartLockItem: React.FC<SmartLockItemProps> = ({ lock, onLockStateC
 const styles = StyleSheet.create({
   lockCard: {
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     padding: 16,
     marginBottom: 16,
+  },
+  lockCardDark: {
+    backgroundColor: '#1E1E1E',
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   lockHeader: {
     flexDirection: 'row',
@@ -554,13 +577,17 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   swipeContainer: {
-    height: 40,
+    height: 56,
     backgroundColor: '#FFE5E5',
     borderRadius: 28,
     justifyContent: 'center',
     position: 'relative',
     marginBottom: 12,
     overflow: 'hidden',
+    borderWidth: 0,
+  },
+  swipeContainerDark: {
+    backgroundColor: '#4b5563', // Gray 600
   },
   swipeContainerDisabled: {
     backgroundColor: '#F5F5F5',
@@ -571,16 +598,26 @@ const styles = StyleSheet.create({
   swipeButton: {
     position: 'absolute',
     left: 4,
-    width: 30,
-    height: 30,
+    width: 48,
+    height: 48,
     borderRadius: 24,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  swipeButtonDark: {
+    backgroundColor: '#10b981', // Emerald 500
   },
   swipeButtonDisabled: {
     backgroundColor: colors.textSecondary,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   swipeButtonActive: {
     backgroundColor: '#EF4444',
@@ -590,17 +627,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   swipeTextContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 54,
+    justifyContent: 'center',
+    paddingLeft: 60,
+    paddingRight: 20,
   },
   temporaryButton: {
-    height: 40,
+    height: 48,
     backgroundColor: colors.white,
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
