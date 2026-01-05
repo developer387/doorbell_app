@@ -553,19 +553,23 @@ export default function WebGuestScreen() {
 
   // -- Render --
 
+  // STRICT DERIVED VISIBILITY
+  // Moved strictly outside conditional to satisfy React Hooks rules
+  const visibleLocks = useMemo(() => {
+    const locks = property.smartLocks || [];
+    if (showLocks && currentGuest) {
+      // Guest Access: Strict Filter
+      const allowedIds = currentGuest.allowedLocks || [];
+      return locks.filter(lock => allowedIds.includes(lock.device_id));
+    } else if (showLocks) {
+      // Master/Owner Access: Show All
+      return locks;
+    }
+    return [];
+  }, [showLocks, currentGuest, property.smartLocks]);
+
   // 1. Locks View (Accepted) - Dedicated Custom View
   if (showLocks) {
-    // STRICT DERIVED VISIBILITY
-    const visibleLocks = useMemo(() => {
-      if (currentGuest) {
-        // Guest Access: Strict Filter
-        const allowedIds = currentGuest.allowedLocks || [];
-        return property.smartLocks.filter(lock => allowedIds.includes(lock.device_id));
-      } else {
-        // Master/Owner Access: Show All
-        return property.smartLocks;
-      }
-    }, [currentGuest, property.smartLocks]);
 
     return (
       <View style={styles.container}>
