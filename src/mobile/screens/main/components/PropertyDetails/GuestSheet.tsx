@@ -5,7 +5,8 @@ import { Body, SmallText, Title } from '@/typography';
 import { X, User, Clock } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Guest } from '@/types/Property';
+import type { Guest, SmartLock } from '@/types/Property';
+import { CheckSquare, Square } from 'lucide-react-native';
 
 interface GuestSheetProps {
     isVisible: boolean;
@@ -14,6 +15,7 @@ interface GuestSheetProps {
     isLoading: boolean;
     initialGuest?: Guest | null;
     mode: 'add' | 'edit';
+    smartLocks: SmartLock[];
     generatePin?: () => string;
 }
 
@@ -30,6 +32,7 @@ export const GuestSheet = ({
     isLoading,
     initialGuest,
     mode,
+    smartLocks,
     generatePin
 }: GuestSheetProps) => {
     const [name, setName] = useState('');
@@ -37,6 +40,7 @@ export const GuestSheet = ({
     const [startTime, setStartTime] = useState(new Date());
     const [endTime, setEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000));
     const [accessPin, setAccessPin] = useState('');
+    const [selectedLockIds, setSelectedLockIds] = useState<string[]>([]);
 
     const [dateState, setDateState] = useState<DateState>({
         showStart: false,
@@ -52,12 +56,23 @@ export const GuestSheet = ({
                 setStartTime(new Date(initialGuest.startTime));
                 setEndTime(new Date(initialGuest.endTime));
                 setAccessPin(initialGuest.accessPin);
+                // Default to all locks if allowedLocks is undefined (legacy behavior compatibility) or use explicit list
+                if (initialGuest.allowedLocks) {
+                    setSelectedLockIds(initialGuest.allowedLocks);
+                } else {
+                    // For legacy guests without allowedLocks, we might want to default to nothing or everything.
+                    // Request says "No shared, inferred, or inherited access".
+                    // So we default to [], forcing the user to select.
+                    setSelectedLockIds([]);
+                }
             } else {
                 setName('');
                 setAvatar('avatar1');
                 setStartTime(new Date());
                 setEndTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
                 setAccessPin('');
+                // Default new guests to have NO locks selected (Must be explicit)
+                setSelectedLockIds([]);
             }
         }
     }, [isVisible, initialGuest, mode]);
@@ -101,6 +116,13 @@ export const GuestSheet = ({
     };
 
     const handleSave = async () => {
+        // Validate at least one lock is selected? Or allow guests with no locks?
+        // "Lock selection is mandatory during guest creation or PIN generation."
+        if (selectedLockIds.length === 0) {
+            Alert.alert('Lock Selection Required', 'Please select at least one lock for this guest.');
+            return;
+        }
+
         // Validate Time Range
         if (startTime.getTime() >= endTime.getTime()) {
             Alert.alert('Invalid Schedule', 'End time must be after Start time');
@@ -112,6 +134,7 @@ export const GuestSheet = ({
             avatar,
             startTime: startTime.toISOString(),
             endTime: endTime.toISOString(),
+            allowedLocks: selectedLockIds,
         };
 
         // Only include pin if editing/specified
@@ -167,6 +190,47 @@ export const GuestSheet = ({
                     placeholder="Guest name (e.g Cleaner)"
                     maxLength={20}
                 />
+
+                <View style={{ marginTop: 16 }}>
+                    <Body weight="bold" style={{ marginBottom: 8 }}>Allowed Locks</Body>
+                    <View style={{ gap: 8 }}>
+                        {smartLocks.map(lock => {
+                            const isSelected = selectedLockIds.includes(lock.device_id);
+                            return (
+                                <TouchableOpacity
+                                    key={lock.device_id}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        padding: 12,
+                                        backgroundColor: colors.slate50,
+                                        borderRadius: 8,
+                                        borderWidth: 1,
+                                        borderColor: isSelected ? colors.primary : colors.borderColor
+                                    }}
+                                    onPress={() => {
+                                        if (isSelected) {
+                                            setSelectedLockIds(prev => prev.filter(id => id !== lock.device_id));
+                                        } else {
+                                            setSelectedLockIds(prev => [...prev, lock.device_id]);
+                                        }
+                                    }}
+                                >
+                                    {isSelected ? (
+                                        <CheckSquare size={20} color={colors.primary} />
+                                    ) : (
+                                        <Square size={20} color={colors.textSecondary} />
+                                    )}
+                                    <View style={{ marginLeft: 12 }}>
+                                        <Body weight={isSelected ? "bold" : "regular"}>{lock.display_name}</Body>
+                                        <SmallText variant="secondary" style={{ fontSize: 12 }}>{lock.manufacturer}</SmallText>
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                    <SmallText variant="secondary" style={{ marginTop: 4 }}>Select at least one lock for this guest.</SmallText>
+                </View>
 
                 <View style={styles.timePickerContainer}>
                     <View style={{ flex: 1 }}>

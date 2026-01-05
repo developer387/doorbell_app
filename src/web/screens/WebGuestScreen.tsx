@@ -1,21 +1,145 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView, ActivityIndicator, Linking } from 'react-native';
-import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon } from 'lucide-react-native';
+import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon, Lock, Unlock, ChevronRight, LogOut } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
-import { type Property } from '@/types/Property';
+import { type Property, type Guest } from '@/types/Property';
 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
-import { SmartLockItem, type LockState } from '@/components/SmartLockItem';
+import { type LockState } from '@/components/SmartLockItem'; // Keep type but remove component import
 import { collection, addDoc, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { seamService } from '@/services/seam.service';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
 };
 
 type WebGuestScreenRouteProp = RouteProp<{ params: { property: Property } }, 'params'>;
+
+
+const SwipeUnlockButton = ({ onUnlock, isLoading }: { onUnlock: () => void, isLoading?: boolean }) => {
+  const [dragX] = useState(new Animated.Value(0));
+  const [complete, setComplete] = useState(false);
+  const BUTTON_WIDTH = 300;
+
+  // Simple mock swipe for now since PanResponder can be tricky on some web setups without config
+  // We'll use a Pressable implementation that animates
+  const handlePress = () => {
+    if (complete || isLoading) return;
+
+    Animated.timing(dragX, {
+      toValue: BUTTON_WIDTH - 50,
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => {
+      setComplete(true);
+      onUnlock();
+      // Reset after delay
+      setTimeout(() => {
+        setComplete(false);
+        dragX.setValue(0);
+      }, 2000);
+    });
+  };
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={handlePress}
+      style={{
+        width: '100%',
+        height: 56,
+        backgroundColor: complete ? '#4ade80' : '#333',
+        borderRadius: 28,
+        justifyContent: 'center',
+        overflow: 'hidden',
+        marginTop: 15,
+        marginBottom: 10
+      }}
+    >
+      <View style={{ position: 'absolute', width: '100%', alignItems: 'center' }}>
+        <Text style={{
+          color: complete ? '#000' : '#aaa',
+          fontWeight: '600',
+          fontSize: 15
+        }}>
+          {complete ? 'Unlocked!' : isLoading ? 'Unlocking...' : 'Tap for Instant unlock  »'}
+        </Text>
+      </View>
+
+      <Animated.View style={{
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: complete ? '#fff' : '#4ade80',
+        marginLeft: 3,
+        transform: [{ translateX: dragX }],
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      }}>
+        {complete ? <Unlock size={24} color="#4ade80" /> : <Lock size={24} color="white" />}
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+const GuestLockCard = ({ lock, onUnlock }: { lock: any, onUnlock: () => void }) => {
+  return (
+    <View style={{
+      width: '100%',
+      backgroundColor: '#1c1c1e',
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: '#333'
+    }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+        <View style={{
+          width: 40, height: 40, backgroundColor: '#333', borderRadius: 8,
+          alignItems: 'center', justifyContent: 'center', marginRight: 12
+        }}>
+          <Lock size={20} color="#fff" />
+        </View>
+        <View>
+          <Text style={{ color: 'white', fontSize: 17, fontWeight: '600' }}>{lock.display_name || 'Smart Lock'}</Text>
+          <Text style={{ color: '#888', fontSize: 13 }}>{lock.manufacturer || 'Igloohome'}</Text>
+        </View>
+      </View>
+
+      <View style={{ height: 1, backgroundColor: '#333', marginVertical: 8 }} />
+
+      {/* Status */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <Text style={{ color: '#888', fontSize: 14 }}>Status</Text>
+        <Lock size={16} color="#aaa" />
+      </View>
+
+      {/* Actions */}
+      <SwipeUnlockButton onUnlock={onUnlock} />
+
+      <TouchableOpacity style={{
+        backgroundColor: 'white',
+        borderRadius: 28,
+        paddingVertical: 14,
+        alignItems: 'center',
+        marginTop: 8,
+        flexDirection: 'row',
+        justifyContent: 'center'
+      }}>
+        <Text style={{ color: 'black', fontWeight: '600', fontSize: 15 }}>Set temporary unlock passcode</Text>
+        <ChevronRight size={16} color="black" style={{ marginLeft: 4 }} />
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 export default function WebGuestScreen() {
   const route = useRoute<WebGuestScreenRouteProp>();
@@ -50,7 +174,8 @@ export default function WebGuestScreen() {
   const [requestDocId, setRequestDocId] = useState<string | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
   const [isDeclined, setIsDeclined] = useState(false);
-  const [allowedLocks, setAllowedLocks] = useState<string[]>([]);
+  // Removed allowedLocks state to enforce derived state logic
+  const [currentGuest, setCurrentGuest] = useState<Guest | null>(null);
 
   // -- Refs --
   const cameraRef = useRef<CameraView>(null);
@@ -116,7 +241,20 @@ export default function WebGuestScreen() {
         if (data?.status === 'accepted') {
           setIsWaiting(false);
           if (data.allowedLocks && Array.isArray(data.allowedLocks)) {
-            setAllowedLocks(data.allowedLocks);
+            // Check if this is a response to a VIDEO request (not PIN)
+            // If so, we might need a temporary guest object or handles this differently.
+            // For now, if accepted via video request, we treat it as an ad-hoc session.
+            const adHocGuest: Guest = {
+              id: 'adhoc',
+              name: 'Guest',
+              avatar: 'avatar1',
+              startTime: new Date().toISOString(),
+              endTime: new Date().toISOString(),
+              accessPin: '',
+              createdAt: new Date().toISOString(),
+              allowedLocks: data.allowedLocks
+            };
+            setCurrentGuest(adHocGuest);
             setShowLocks(true);
           }
         }
@@ -306,8 +444,17 @@ export default function WebGuestScreen() {
   };
 
   // -- Lock & PIN Handlers --
-  const handleLockStateChange = (deviceId: string, newState: Partial<LockState>) => {
-    // In a real app we'd update state or call API here
+  // -- Lock & PIN Handlers --
+  const handleLockStateChange = async (deviceId: string, newState: Partial<LockState>) => {
+    if (newState.isLocked === false) {
+      try {
+        await seamService.unlockDoor(deviceId);
+        Alert.alert("Success", "Door Unlocked Successfully");
+      } catch (error) {
+        console.error("Unlock failed", error);
+        Alert.alert("Error", "Failed to unlock door. Please try again.");
+      }
+    }
   };
 
   // PIN Logic handled separately for brevity/modularity, exact copy of original logic can be kept
@@ -322,17 +469,21 @@ export default function WebGuestScreen() {
     setPinError('');
     try {
       let guests = property.guests || [];
+      let currentProperty = property;
+
       if (property.id) {
         const propertyRef = doc(db, 'properties', property.id);
         const propertySnap = await getDoc(propertyRef);
         if (propertySnap.exists()) {
-          const propertyData = propertySnap.data() as Property;
-          if (propertyData.guests) guests = propertyData.guests;
+          const fetchedData = propertySnap.data() as Property;
+          currentProperty = fetchedData;
+          if (fetchedData.guests) guests = fetchedData.guests;
         }
       }
       // Check Property Master PIN
-      if (propertyData.pinCode === fullPin) {
+      if (currentProperty.pinCode === fullPin) {
         setIsPinVerified(true);
+        setCurrentGuest(null); // Master access
         setPinError('');
       } else {
         const matchingGuest = guests.find(g => g.accessPin === fullPin);
@@ -351,6 +502,7 @@ export default function WebGuestScreen() {
             setIsVerifyingPin(false);
             return;
           }
+          setCurrentGuest(matchingGuest);
           setIsPinVerified(true);
           setPinError('');
         } else {
@@ -366,9 +518,7 @@ export default function WebGuestScreen() {
 
   const handleViewLocks = () => {
     setIsPinModalVisible(false);
-    // When using PIN, we unlock ALL locks or specific ones?
-    // Usually PIN guests have full access or defined access. Assuming full for PIN.
-    setAllowedLocks(property.smartLocks.map(l => l.device_id));
+    // No state setting here - logic is derived in render
     setShowLocks(true);
   }
 
@@ -403,37 +553,67 @@ export default function WebGuestScreen() {
 
   // -- Render --
 
-  // 1. Locks View (Accepted)
+  // 1. Locks View (Accepted) - Dedicated Custom View
   if (showLocks) {
-    const visibleLocks = property.smartLocks.filter(lock => allowedLocks.includes(lock.device_id));
+    // STRICT DERIVED VISIBILITY
+    const visibleLocks = useMemo(() => {
+      if (currentGuest) {
+        // Guest Access: Strict Filter
+        const allowedIds = currentGuest.allowedLocks || [];
+        return property.smartLocks.filter(lock => allowedIds.includes(lock.device_id));
+      } else {
+        // Master/Owner Access: Show All
+        return property.smartLocks;
+      }
+    }, [currentGuest, property.smartLocks]);
 
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>{property.propertyName} 🏠</Text>
-          <Text style={styles.headerSubtitle}>{property.address}</Text>
-        </View>
+        <ScrollView style={{ width: '100%', paddingHorizontal: 20 }} contentContainerStyle={{ paddingBottom: 100 }}>
+          <View style={{ marginTop: 20, marginBottom: 30 }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: 'white', marginBottom: 4 }}>
+              {property.propertyName} 🏠
+            </Text>
+            <Text style={{ fontSize: 15, color: '#888' }}>
+              {property.address}
+            </Text>
+            {currentGuest && (
+              <Text style={{ fontSize: 14, color: '#4ade80', marginTop: 4 }}>
+                Welcome, {currentGuest.name}
+              </Text>
+            )}
+          </View>
 
-        <ScrollView style={styles.locksList}>
           {visibleLocks.length > 0 ? visibleLocks.map((lock, index) => (
-            <SmartLockItem
+            <GuestLockCard
               key={index}
-              lock={{ ...lock, isLocked: true } as LockState}
-              onLockStateChange={handleLockStateChange}
-              onEdit={() => { }}
+              lock={lock}
+              onUnlock={() => handleLockStateChange(lock.device_id, { isLocked: false })}
             />
           )) : (
             <Text style={[styles.waitingText, { marginTop: 40 }]}>No locks available for you.</Text>
           )}
 
-          <TouchableOpacity style={styles.exitButton} onPress={() => {
+          <TouchableOpacity style={{
+            backgroundColor: '#ef4444',
+            borderRadius: 30,
+            paddingVertical: 16,
+            alignItems: 'center',
+            marginTop: 20,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            width: '100%'
+          }} onPress={() => {
             setShowLocks(false);
             setIsPinVerified(false);
             resetPinInputs();
             handleRetake();
           }}>
-            <Text style={styles.exitButtonText}>Exit Property ↪</Text>
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginRight: 8 }}>Exit Property</Text>
+            <LogOut size={20} color="white" />
           </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
         </ScrollView>
       </View>
     )
