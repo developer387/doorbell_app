@@ -375,6 +375,7 @@ export default function WebGuestScreen() {
   const handlePinChange = (value: string, position: number) => {
     if (value.length > 1) return;
     if (value && !/^\d$/.test(value)) return;
+    setPinError('');
     switch (position) {
       case 1: setPin1(value); if (value && pin2Ref.current) pin2Ref.current.focus(); break;
       case 2: setPin2(value); if (value && pin3Ref.current) pin3Ref.current.focus(); break;

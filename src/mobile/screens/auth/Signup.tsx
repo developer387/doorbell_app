@@ -54,6 +54,11 @@ export const Signup: React.FC<SignupProps> = ({ navigation }) => {
     },
   });
 
+  React.useEffect(() => {
+    const subscription = watch(() => setSubmitError(null));
+    return () => subscription.unsubscribe();
+  }, [watch]);
+
   const onSubmit = async (data: SignupFormData) => {
     try {
       setIsSubmitting(true);
