@@ -1,16 +1,33 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Alert, Modal, TextInput, ScrollView, ActivityIndicator, Linking } from 'react-native';
-import { House, Send, RefreshCw, CircleCheckBig, X as CloseIcon, Lock, Unlock, ChevronRight, LogOut } from 'lucide-react-native';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Easing,
+  Platform,
+  Alert,
+  Modal,
+  ActivityIndicator,
+  Linking,
+} from 'react-native';
+import { House, Send, RefreshCw, X as CloseIcon } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
-import { type Property, type Guest } from '@/types/Property';
-
+import { type Property } from '@/types/Property';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
-import { type LockState } from '@/components/SmartLockItem'; // Keep type but remove component import
-import { collection, addDoc, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { seamService } from '@/services/seam.service';
+import { useGuestAccess } from '@/hooks/guest';
+import {
+  PinInput,
+  PinVerifiedView,
+  GuestStateMessage,
+  LocksListView,
+} from '../components/guest';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -18,137 +35,24 @@ const generateGuestId = (): string => {
 
 type WebGuestScreenRouteProp = RouteProp<{ params: { property: Property } }, 'params'>;
 
-
-const SwipeUnlockButton = ({ onUnlock, isLoading }: { onUnlock: () => void, isLoading?: boolean }) => {
-  const [dragX] = useState(new Animated.Value(0));
-  const [complete, setComplete] = useState(false);
-  const BUTTON_WIDTH = 300;
-
-  // Simple mock swipe for now since PanResponder can be tricky on some web setups without config
-  // We'll use a Pressable implementation that animates
-  const handlePress = () => {
-    if (complete || isLoading) return;
-
-    Animated.timing(dragX, {
-      toValue: BUTTON_WIDTH - 50,
-      duration: 300,
-      useNativeDriver: false,
-    }).start(() => {
-      setComplete(true);
-      onUnlock();
-      // Reset after delay
-      setTimeout(() => {
-        setComplete(false);
-        dragX.setValue(0);
-      }, 2000);
-    });
-  };
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={handlePress}
-      style={{
-        width: '100%',
-        height: 56,
-        backgroundColor: complete ? '#4ade80' : '#333',
-        borderRadius: 28,
-        justifyContent: 'center',
-        overflow: 'hidden',
-        marginTop: 15,
-        marginBottom: 10
-      }}
-    >
-      <View style={{ position: 'absolute', width: '100%', alignItems: 'center' }}>
-        <Text style={{
-          color: complete ? '#000' : '#aaa',
-          fontWeight: '600',
-          fontSize: 15
-        }}>
-          {complete ? 'Unlocked!' : isLoading ? 'Unlocking...' : 'Tap for Instant unlock  »'}
-        </Text>
-      </View>
-
-      <Animated.View style={{
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: complete ? '#fff' : '#4ade80',
-        marginLeft: 3,
-        transform: [{ translateX: dragX }],
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-      }}>
-        {complete ? <Unlock size={24} color="#4ade80" /> : <Lock size={24} color="white" />}
-      </Animated.View>
-    </TouchableOpacity>
-  );
-};
-
-const GuestLockCard = ({ lock, onUnlock }: { lock: any, onUnlock: () => void }) => {
-  return (
-    <View style={{
-      width: '100%',
-      backgroundColor: '#1c1c1e',
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: '#333'
-    }}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-        <View style={{
-          width: 40, height: 40, backgroundColor: '#333', borderRadius: 8,
-          alignItems: 'center', justifyContent: 'center', marginRight: 12
-        }}>
-          <Lock size={20} color="#fff" />
-        </View>
-        <View>
-          <Text style={{ color: 'white', fontSize: 17, fontWeight: '600' }}>{lock.display_name || 'Smart Lock'}</Text>
-          <Text style={{ color: '#888', fontSize: 13 }}>{lock.manufacturer || 'Igloohome'}</Text>
-        </View>
-      </View>
-
-      <View style={{ height: 1, backgroundColor: '#333', marginVertical: 8 }} />
-
-      {/* Status */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Text style={{ color: '#888', fontSize: 14 }}>Status</Text>
-        <Lock size={16} color="#aaa" />
-      </View>
-
-      {/* Actions */}
-      <SwipeUnlockButton onUnlock={onUnlock} />
-
-      <TouchableOpacity style={{
-        backgroundColor: 'white',
-        borderRadius: 28,
-        paddingVertical: 14,
-        alignItems: 'center',
-        marginTop: 8,
-        flexDirection: 'row',
-        justifyContent: 'center'
-      }}>
-        <Text style={{ color: 'black', fontWeight: '600', fontSize: 15 }}>Set temporary unlock passcode</Text>
-        <ChevronRight size={16} color="black" style={{ marginLeft: 4 }} />
-      </TouchableOpacity>
-    </View>
-  );
-};
-
 export default function WebGuestScreen() {
   const route = useRoute<WebGuestScreenRouteProp>();
-  const { property } = route.params;
+  const { property: initialProperty } = route.params;
 
-  // -- Animation State --
+  const {
+    state: guestState,
+    propertyData,
+    isLoading: isPropertyLoading,
+    verifyPin,
+    confirmLockAccess,
+    reset: resetGuestAccess,
+  } = useGuestAccess({
+    propertyId: initialProperty.id || '',
+    enableRealtime: true,
+  });
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // -- Guest & Recording State --
   const [guestId, setGuestId] = useState<string>('');
   const [isRecording, setIsRecording] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -157,55 +61,49 @@ export default function WebGuestScreen() {
   const [showSendButton, setShowSendButton] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
-  // -- Checks State --
   const [hasFace, setHasFace] = useState(false);
 
-  // -- Permission State --
   const [permission, requestPermission] = useCameraPermissions();
 
-  // -- PIN Access State --
   const [isPinModalVisible, setIsPinModalVisible] = useState(false);
-  const [pinError, setPinError] = useState('');
-  const [isPinVerified, setIsPinVerified] = useState(false);
-  const [showLocks, setShowLocks] = useState(false);
-  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
-  // -- Request Status State --
   const [requestDocId, setRequestDocId] = useState<string | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
   const [isDeclined, setIsDeclined] = useState(false);
-  // Removed allowedLocks state to enforce derived state logic
-  const [currentGuest, setCurrentGuest] = useState<Guest | null>(null);
+  const [showLocksFromVideo, setShowLocksFromVideo] = useState(false);
+  const [videoAllowedLocks, setVideoAllowedLocks] = useState<string[]>([]);
 
-  // -- Refs --
   const cameraRef = useRef<CameraView>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
 
-  // PIN digit states
-  const [pin1, setPin1] = useState('');
-  const [pin2, setPin2] = useState('');
-  const [pin3, setPin3] = useState('');
-  const [pin4, setPin4] = useState('');
+  const effectivePropertyName = propertyData?.propertyName || initialProperty.propertyName || 'Property';
+  const effectivePropertyAddress = propertyData?.address || initialProperty.address || '';
+  const effectiveSmartLocks = propertyData?.smartLocks || [];
 
-  const pin1Ref = useRef<any>(null);
-  const pin2Ref = useRef<any>(null);
-  const pin3Ref = useRef<any>(null);
-  const pin4Ref = useRef<any>(null);
-
-  // -- Effects --
   useEffect(() => {
     const startPulse = () => {
-      Animated.loop(Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.2, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])).start();
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 1500,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
     };
     startPulse();
-  }, []);
+  }, [pulseAnim]);
 
-  // Recording Timer
   useEffect(() => {
     if (isRecording) {
       setRecordingTime(0);
@@ -227,63 +125,47 @@ export default function WebGuestScreen() {
     };
   }, [isRecording]);
 
-  // Firestore Listener for Request Status
   useEffect(() => {
-    if (!requestDocId || !property.id) return;
+    if (!requestDocId || !initialProperty.id) return;
 
-    const unsubscribe = onSnapshot(doc(db, 'properties', property.id, 'guestRequests', requestDocId), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.status === 'declined') {
-          setIsDeclined(true);
-          setIsWaiting(false);
-        }
-        if (data?.status === 'accepted') {
-          setIsWaiting(false);
-          if (data.allowedLocks && Array.isArray(data.allowedLocks)) {
-            // Check if this is a response to a VIDEO request (not PIN)
-            // If so, we might need a temporary guest object or handles this differently.
-            // For now, if accepted via video request, we treat it as an ad-hoc session.
-            const adHocGuest: Guest = {
-              id: 'adhoc',
-              name: 'Guest',
-              avatar: 'avatar1',
-              startTime: new Date().toISOString(),
-              endTime: new Date().toISOString(),
-              accessPin: '',
-              createdAt: new Date().toISOString(),
-              allowedLocks: data.allowedLocks
-            };
-            setCurrentGuest(adHocGuest);
-            setShowLocks(true);
+    const unsubscribe = onSnapshot(
+      doc(db, 'properties', initialProperty.id, 'guestRequests', requestDocId),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.status === 'declined') {
+            setIsDeclined(true);
+            setIsWaiting(false);
+          }
+          if (data?.status === 'accepted') {
+            setIsWaiting(false);
+            if (data.allowedLocks && Array.isArray(data.allowedLocks)) {
+              setVideoAllowedLocks(data.allowedLocks);
+              setShowLocksFromVideo(true);
+            }
           }
         }
       }
-    });
+    );
 
     return () => unsubscribe();
-  }, [requestDocId, property.id]);
-
-  // -- Camera & Recording Handlers --
+  }, [requestDocId, initialProperty.id]);
 
   const handleStartPreview = async () => {
-    // 1. Request Camera
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        alert("Camera permission is required to ring the doorbell.");
+        Alert.alert('Permission Required', 'Camera permission is required to ring the doorbell.');
         return;
       }
     }
 
-    // 3. Start Preview
     const newGuestId = generateGuestId();
     setGuestId(newGuestId);
     setIsPreviewing(true);
     setRecordedVideoUrl(null);
-    setHasFace(false); // Reset face state
+    setHasFace(false);
 
-    // Web Hack: Web doesn't support onFacesDetected easily, so we auto-approve on Web
     if (Platform.OS === 'web') {
       setHasFace(true);
     }
@@ -291,7 +173,7 @@ export default function WebGuestScreen() {
 
   const handleStartRecording = async () => {
     if (!hasFace) {
-      Alert.alert("Face Required", "Please ensure your face is clearly visible.");
+      Alert.alert('Face Required', 'Please ensure your face is clearly visible.');
       return;
     }
 
@@ -308,7 +190,7 @@ export default function WebGuestScreen() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
-        audio: true
+        audio: true,
       });
 
       const mimeTypes = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm', 'video/ogg'];
@@ -332,7 +214,7 @@ export default function WebGuestScreen() {
       };
 
       mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
         if (videoChunksRef.current.length > 0) {
           const blobType = videoChunksRef.current[0]?.type || 'video/webm';
           const videoBlob = new Blob(videoChunksRef.current, { type: blobType });
@@ -391,6 +273,8 @@ export default function WebGuestScreen() {
     videoChunksRef.current = [];
     setRequestDocId(null);
     setIsDeclined(false);
+    setShowLocksFromVideo(false);
+    setVideoAllowedLocks([]);
   };
 
   const handleSend = async () => {
@@ -408,7 +292,7 @@ export default function WebGuestScreen() {
           downloadUrl = await getDownloadURL(videoRef);
         } catch (uploadError) {
           console.error('Error uploading video:', uploadError);
-          alert('Failed to upload video. Please try again.');
+          Alert.alert('Error', 'Failed to upload video. Please try again.');
           setIsSending(false);
           return;
         }
@@ -416,18 +300,21 @@ export default function WebGuestScreen() {
 
       const requestData = {
         guestId,
-        propertyId: property.propertyId || property.id,
-        propertyName: property.propertyName || 'Property',
+        propertyId: initialProperty.propertyId || initialProperty.id,
+        propertyName: initialProperty.propertyName || 'Property',
         timestamp: new Date().toISOString(),
         status: 'pending',
-        userId: property.userId,
+        userId: initialProperty.userId,
         videoUrl: downloadUrl,
       };
 
-      const docRef = await addDoc(collection(db, 'properties', property.id!, 'guestRequests'), requestData);
+      const docRef = await addDoc(
+        collection(db, 'properties', initialProperty.id!, 'guestRequests'),
+        requestData
+      );
       setRequestDocId(docRef.id);
 
-      await updateDoc(doc(db, 'properties', property.id!), {
+      await updateDoc(doc(db, 'properties', initialProperty.id!), {
         hasPendingRequest: true,
         lastRequestTimestamp: new Date().toISOString(),
       });
@@ -437,221 +324,235 @@ export default function WebGuestScreen() {
       setShowSendButton(false);
     } catch (error) {
       console.error('Error sending guest request:', error);
-      alert('Failed to send request. Please try again.');
+      Alert.alert('Error', 'Failed to send request. Please try again.');
     } finally {
       setIsSending(false);
     }
   };
 
-  // -- Lock & PIN Handlers --
-  // -- Lock & PIN Handlers --
-  const handleLockStateChange = async (deviceId: string, newState: Partial<LockState>) => {
-    if (newState.isLocked === false) {
-      try {
-        await seamService.unlockDoor(deviceId);
-        Alert.alert("Success", "Door Unlocked Successfully");
-      } catch (error) {
-        console.error("Unlock failed", error);
-        Alert.alert("Error", "Failed to unlock door. Please try again.");
-      }
-    }
-  };
-
-  // PIN Logic handled separately for brevity/modularity, exact copy of original logic can be kept
-  // ... keeping original PIN logic ...
-  const handlePinSubmit = async () => {
-    const fullPin = `${pin1}${pin2}${pin3}${pin4}`;
-    if (fullPin.length < 4) {
-      setPinError('Please enter a valid 4-digit PIN');
-      return;
-    }
-    setIsVerifyingPin(true);
-    setPinError('');
+  const handleUnlockDoor = useCallback(async (deviceId: string) => {
     try {
-      let guests = property.guests || [];
-      let currentProperty = property;
-
-      if (property.id) {
-        const propertyRef = doc(db, 'properties', property.id);
-        const propertySnap = await getDoc(propertyRef);
-        if (propertySnap.exists()) {
-          const fetchedData = propertySnap.data() as Property;
-          currentProperty = fetchedData;
-          if (fetchedData.guests) guests = fetchedData.guests;
-        }
-      }
-      // Check Property Master PIN
-      if (currentProperty.pinCode === fullPin) {
-        setIsPinVerified(true);
-        setCurrentGuest(null); // Master access
-        setPinError('');
-      } else {
-        const matchingGuest = guests.find(g => g.accessPin === fullPin);
-        if (matchingGuest) {
-          const now = new Date();
-          const start = new Date(matchingGuest.startTime);
-          const end = new Date(matchingGuest.endTime);
-          const bufferMs = 60 * 1000;
-          if (now.getTime() < (start.getTime() - bufferMs)) {
-            setPinError('Access not yet active');
-            setIsVerifyingPin(false);
-            return;
-          }
-          if (now.getTime() > (end.getTime() + bufferMs)) {
-            setPinError('Access expired');
-            setIsVerifyingPin(false);
-            return;
-          }
-          setCurrentGuest(matchingGuest);
-          setIsPinVerified(true);
-          setPinError('');
-        } else {
-          setPinError('PIN Incorrect, Try Again');
-        }
-      }
+      await seamService.unlockDoor(deviceId);
+      Alert.alert('Success', 'Door Unlocked Successfully');
     } catch (error) {
-      setPinError('Error verifying PIN, please try again');
-    } finally {
-      setIsVerifyingPin(false);
+      console.error('Unlock failed', error);
+      Alert.alert('Error', 'Failed to unlock door. Please try again.');
     }
-  };
+  }, []);
 
-  const handleViewLocks = () => {
+  const handlePinSubmit = useCallback((pin: string) => {
+    verifyPin(pin);
+  }, [verifyPin]);
+
+  const handleViewLocks = useCallback(() => {
     setIsPinModalVisible(false);
-    // No state setting here - logic is derived in render
-    setShowLocks(true);
-  }
+    confirmLockAccess();
+  }, [confirmLockAccess]);
 
-  const handlePinChange = (value: string, position: number) => {
-    if (value.length > 1) return;
-    if (value && !/^\d$/.test(value)) return;
-    setPinError('');
-    switch (position) {
-      case 1: setPin1(value); if (value && pin2Ref.current) pin2Ref.current.focus(); break;
-      case 2: setPin2(value); if (value && pin3Ref.current) pin3Ref.current.focus(); break;
-      case 3: setPin3(value); if (value && pin4Ref.current) pin4Ref.current.focus(); break;
-      case 4: setPin4(value); break;
+  const handlePinModalClose = useCallback(() => {
+    setIsPinModalVisible(false);
+    resetGuestAccess();
+  }, [resetGuestAccess]);
+
+  const handleExitProperty = useCallback(() => {
+    resetGuestAccess();
+    setShowLocksFromVideo(false);
+    setVideoAllowedLocks([]);
+    handleRetake();
+  }, [resetGuestAccess]);
+
+  const getVideoAllowedLocksData = useCallback(() => {
+    if (!videoAllowedLocks.length || !effectiveSmartLocks.length) {
+      return [];
     }
-  };
+    const normalizedAllowedIds = new Set(
+      videoAllowedLocks.map((id) => id.trim().toLowerCase())
+    );
+    return effectiveSmartLocks.filter((lock) => {
+      const lockId = lock.device_id?.trim().toLowerCase() || '';
+      return lockId !== '' && normalizedAllowedIds.has(lockId);
+    });
+  }, [videoAllowedLocks, effectiveSmartLocks]);
 
-  const handlePinKeyPress = (e: any, position: number) => {
-    if (e.nativeEvent.key === 'Backspace') {
-      switch (position) {
-        case 2: if (!pin2 && pin1Ref.current) pin1Ref.current.focus(); break;
-        case 3: if (!pin3 && pin2Ref.current) pin2Ref.current.focus(); break;
-        case 4: if (!pin4 && pin3Ref.current) pin3Ref.current.focus(); break;
-      }
+  const renderPinModalContent = () => {
+    if (guestState.type === 'verifying_pin') {
+      return (
+        <PinInput
+          onSubmit={handlePinSubmit}
+          onCancel={handlePinModalClose}
+          isLoading={true}
+          propertyName={effectivePropertyName}
+          propertyAddress={effectivePropertyAddress}
+        />
+      );
     }
-  };
 
-  const resetPinInputs = () => {
-    setPin1(''); setPin2(''); setPin3(''); setPin4('');
-    setPinError('');
-    if (pin1Ref.current) pin1Ref.current.focus();
-  };
+    if (guestState.type === 'invalid_pin') {
+      return (
+        <PinInput
+          onSubmit={handlePinSubmit}
+          onCancel={handlePinModalClose}
+          isLoading={false}
+          errorMessage={guestState.message}
+          propertyName={effectivePropertyName}
+          propertyAddress={effectivePropertyAddress}
+        />
+      );
+    }
 
+    if (guestState.type === 'access_not_yet_active') {
+      return (
+        <PinInput
+          onSubmit={handlePinSubmit}
+          onCancel={handlePinModalClose}
+          isLoading={false}
+          errorMessage="Access not yet active"
+          propertyName={effectivePropertyName}
+          propertyAddress={effectivePropertyAddress}
+        />
+      );
+    }
 
-  // -- Render --
+    if (guestState.type === 'access_expired') {
+      return (
+        <PinInput
+          onSubmit={handlePinSubmit}
+          onCancel={handlePinModalClose}
+          isLoading={false}
+          errorMessage="Access expired"
+          propertyName={effectivePropertyName}
+          propertyAddress={effectivePropertyAddress}
+        />
+      );
+    }
 
-  // 1. Locks View (Accepted) - Dedicated Custom View
-  if (showLocks) {
-    // STRICT DERIVED VISIBILITY
-    const visibleLocks = useMemo(() => {
-      if (currentGuest) {
-        // Guest Access: Strict Filter
-        const allowedIds = currentGuest.allowedLocks || [];
-        return property.smartLocks.filter(lock => allowedIds.includes(lock.device_id));
-      } else {
-        // Master/Owner Access: Show All
-        return property.smartLocks;
-      }
-    }, [currentGuest, property.smartLocks]);
+    if (guestState.type === 'pin_verified') {
+      const guestName = guestState.guest?.name;
+      return (
+        <PinVerifiedView
+          guestName={guestName}
+          onViewLocks={handleViewLocks}
+          onCancel={handlePinModalClose}
+        />
+      );
+    }
 
     return (
+      <PinInput
+        onSubmit={handlePinSubmit}
+        onCancel={handlePinModalClose}
+        isLoading={false}
+        propertyName={effectivePropertyName}
+        propertyAddress={effectivePropertyAddress}
+      />
+    );
+  };
+
+  if (isPropertyLoading) {
+    return (
       <View style={styles.container}>
-        <ScrollView style={{ width: '100%', paddingHorizontal: 20 }} contentContainerStyle={{ paddingBottom: 100 }}>
-          <View style={{ marginTop: 20, marginBottom: 30 }}>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', color: 'white', marginBottom: 4 }}>
-              {property.propertyName} 🏠
-            </Text>
-            <Text style={{ fontSize: 15, color: '#888' }}>
-              {property.address}
-            </Text>
-            {currentGuest && (
-              <Text style={{ fontSize: 14, color: '#4ade80', marginTop: 4 }}>
-                Welcome, {currentGuest.name}
-              </Text>
-            )}
-          </View>
-
-          {visibleLocks.length > 0 ? visibleLocks.map((lock, index) => (
-            <GuestLockCard
-              key={index}
-              lock={lock}
-              onUnlock={() => handleLockStateChange(lock.device_id, { isLocked: false })}
-            />
-          )) : (
-            <Text style={[styles.waitingText, { marginTop: 40 }]}>No locks available for you.</Text>
-          )}
-
-          <TouchableOpacity style={{
-            backgroundColor: '#ef4444',
-            borderRadius: 30,
-            paddingVertical: 16,
-            alignItems: 'center',
-            marginTop: 20,
-            flexDirection: 'row',
-            justifyContent: 'center',
-            width: '100%'
-          }} onPress={() => {
-            setShowLocks(false);
-            setIsPinVerified(false);
-            resetPinInputs();
-            handleRetake();
-          }}>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginRight: 8 }}>Exit Property</Text>
-            <LogOut size={20} color="white" />
-          </TouchableOpacity>
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        <GuestStateMessage type="loading" />
       </View>
-    )
+    );
   }
 
-  // 2. Declined View
+  if (guestState.type === 'system_error') {
+    return (
+      <View style={styles.container}>
+        <GuestStateMessage type="system_error" message={guestState.message} />
+        <TouchableOpacity style={styles.retryButton} onPress={resetGuestAccess}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (guestState.type === 'locks_loaded') {
+    const { locks, guest, isMaster } = guestState;
+    return (
+      <LocksListView
+        propertyName={effectivePropertyName}
+        propertyAddress={effectivePropertyAddress}
+        guestName={isMaster ? 'Owner' : guest?.name}
+        locks={locks}
+        onUnlock={handleUnlockDoor}
+        onExit={handleExitProperty}
+      />
+    );
+  }
+
+  if (guestState.type === 'no_assigned_locks') {
+    return (
+      <View style={styles.container}>
+        <GuestStateMessage type="no_locks" guestName={guestState.guest?.name} />
+        <TouchableOpacity style={styles.exitButtonStandalone} onPress={handleExitProperty}>
+          <Text style={styles.exitButtonText}>Exit</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (guestState.type === 'no_locks_available') {
+    return (
+      <View style={styles.container}>
+        <GuestStateMessage type="no_locks" />
+        <TouchableOpacity style={styles.exitButtonStandalone} onPress={handleExitProperty}>
+          <Text style={styles.exitButtonText}>Exit</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (showLocksFromVideo) {
+    const videoLocks = getVideoAllowedLocksData();
+    if (videoLocks.length === 0) {
+      return (
+        <View style={styles.container}>
+          <GuestStateMessage type="no_locks" />
+          <TouchableOpacity style={styles.exitButtonStandalone} onPress={handleExitProperty}>
+            <Text style={styles.exitButtonText}>Exit</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return (
+      <LocksListView
+        propertyName={effectivePropertyName}
+        propertyAddress={effectivePropertyAddress}
+        guestName="Guest"
+        locks={videoLocks}
+        onUnlock={handleUnlockDoor}
+        onExit={handleExitProperty}
+      />
+    );
+  }
+
   if (isDeclined) {
     return (
       <View style={styles.container}>
         <View style={styles.waitingContainer}>
-          <View style={[styles.sendIconContainer, { backgroundColor: '#ef4444' }]}>
+          <View style={styles.declinedIconContainer}>
             <CloseIcon size={80} color="white" />
           </View>
           <Text style={styles.waitingTitle}>Request Declined</Text>
           <Text style={styles.waitingText}>
             The property owner has declined your request at this time.
           </Text>
-          <TouchableOpacity
-            style={[styles.waitingButton, { backgroundColor: '#333' }]}
-            onPress={handleRetake}
-          >
-            <Text style={styles.waitingButtonText}>Try Again</Text>
+          <TouchableOpacity style={styles.tryAgainButton} onPress={handleRetake}>
+            <Text style={styles.tryAgainButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-
-
-  // 4. Main View
   return (
     <View style={styles.container}>
-      {guestId && (
+      {guestId ? (
         <View style={styles.guestIdBadge}>
           <Text style={styles.guestIdText}>Guest ID: {guestId}</Text>
         </View>
-      )}
+      ) : null}
 
       {!isRecording && !isPreviewing && !guestId && (
         <>
@@ -659,67 +560,59 @@ export default function WebGuestScreen() {
             <View style={styles.houseIconContainer}>
               <House size={64} color="#e67e22" fill="#e67e22" />
             </View>
-            <Text style={styles.houseName}>{property.propertyName || 'Property'}</Text>
-            <Text style={styles.address}>{property.address || 'No address available'}</Text>
+            <Text style={styles.houseName}>{effectivePropertyName}</Text>
+            <Text style={styles.address}>{effectivePropertyAddress || 'No address available'}</Text>
           </View>
 
           {isWaiting ? (
             <View style={styles.waitingStatusContainer}>
-              <ActivityIndicator size="small" color="#4ade80" style={{ marginBottom: 10 }} />
+              <ActivityIndicator size="small" color="#4ade80" />
               <Text style={styles.waitingStatusText}>Request Sent</Text>
               <Text style={styles.waitingStatusSubtext}>Waiting for owner...</Text>
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.ringButtonCapsule}
-              onPress={handleStartPreview}
-            >
+            <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartPreview}>
               <Text style={styles.ringButtonText}>Ring DoorBell</Text>
             </TouchableOpacity>
           )}
         </>
       )}
 
-      {/* Preview/Recording Center Container */}
       <View style={styles.centerContainer}>
         {isPreviewing || isRecording || showSendButton ? (
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraContainer}>
               {Platform.OS === 'web' ? (
                 showSendButton && recordedVideoUrl ? (
-                  // Review Mode
                   <video
                     src={recordedVideoUrl}
                     controls
                     playsInline
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    style={styles.webVideo as any}
                   />
                 ) : (
-                  // Live Camera
                   <video
                     autoPlay
                     muted
                     playsInline
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    style={styles.webVideo as any}
                     ref={(video) => {
                       if (video && (isPreviewing || isRecording)) {
                         navigator.mediaDevices
                           .getUserMedia({ video: { facingMode: 'user' }, audio: false })
-                          .then((stream) => { video.srcObject = stream; })
+                          .then((stream) => {
+                            video.srcObject = stream;
+                          })
                           .catch((err) => console.error('Camera preview error:', err));
                       }
                     }}
                   />
                 )
               ) : permission?.granted ? (
-                <CameraView
-                  ref={cameraRef}
-                  style={styles.camera}
-                  facing="front"
-                />
+                <CameraView ref={cameraRef} style={styles.camera} facing="front" />
               ) : (
                 <View style={styles.recordingPlaceholder}>
-                  <Text style={{ color: 'white' }}>Camera Preview...</Text>
+                  <Text style={styles.placeholderText}>Camera Preview...</Text>
                 </View>
               )}
 
@@ -732,26 +625,28 @@ export default function WebGuestScreen() {
               )}
             </View>
 
-            {/* Start Recording Button Overlay */}
             {isPreviewing && (
               <TouchableOpacity
-                style={[styles.startRecordingButtonOverlay, !hasFace && { borderColor: 'red', opacity: 0.5 }]}
+                style={[
+                  styles.startRecordingButtonOverlay,
+                  !hasFace && styles.startRecordingButtonDisabled,
+                ]}
                 onPress={handleStartRecording}
               >
-                <View style={[styles.recordButtonInner, !hasFace && { backgroundColor: '#555' }]} />
+                <View
+                  style={[styles.recordButtonInner, !hasFace && styles.recordButtonInnerDisabled]}
+                />
               </TouchableOpacity>
             )}
 
             {isPreviewing && !hasFace && (
-              <Text style={[styles.cameraHint, { color: '#ef4444', fontWeight: 'bold' }]}>
+              <Text style={styles.cameraHintError}>
                 {Platform.OS === 'web' ? 'Face check simulated (Web)' : 'No Face Detected'}
               </Text>
             )}
 
             {isPreviewing && hasFace && (
-              <Text style={[styles.cameraHint, { color: '#4ade80' }]}>
-                Face Detected
-              </Text>
+              <Text style={styles.cameraHintSuccess}>Face Detected</Text>
             )}
           </View>
         ) : null}
@@ -766,7 +661,7 @@ export default function WebGuestScreen() {
       {showSendButton && (
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity
-            style={[styles.retakeButton, isSending && { opacity: 0.5 }]}
+            style={[styles.retakeButton, isSending && styles.buttonDisabled]}
             onPress={handleRetake}
             disabled={isSending}
           >
@@ -774,7 +669,7 @@ export default function WebGuestScreen() {
             <Text style={styles.retakeText}>Retake Video</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sendButton, isSending && { opacity: 0.5 }]}
+            style={[styles.sendButton, isSending && styles.buttonDisabled]}
             onPress={handleSend}
             disabled={isSending}
           >
@@ -788,19 +683,19 @@ export default function WebGuestScreen() {
         <View style={styles.footer}>
           <Text style={styles.disclaimer}>
             This triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
-          </Text>p
+          </Text>
           <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>
             <Text style={styles.linkText}>I have an access pin</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.linkButton, { marginTop: 10 }]}
+            style={styles.downloadButton}
             onPress={() => {
               const apkUrl = 'application-3383c39d-4b0a-41ad-a70f-fb04b9626fb8';
               if (Platform.OS === 'web') {
                 const link = document.createElement('a');
                 link.href = apkUrl;
-                link.download = 'DoorbellApp_Guest.apk'; // Suggested filename
+                link.download = 'DoorbellApp_Guest.apk';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -809,70 +704,19 @@ export default function WebGuestScreen() {
               }
             }}
           >
-            <Text style={[styles.linkText, { fontSize: 14, color: '#666' }]}>Download Android App</Text>
+            <Text style={styles.downloadButtonText}>Download Android App</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* PIN Access Modal - Same as before */}
       <Modal
         visible={isPinModalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setIsPinModalVisible(false)}
+        onRequestClose={handlePinModalClose}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => {
-              setIsPinModalVisible(false);
-              resetPinInputs();
-              setIsPinVerified(false);
-            }}>
-              <CloseIcon size={24} color="white" />
-            </TouchableOpacity>
-
-            {!isPinVerified ? (
-              <>
-                <View style={styles.modalHeader}>
-                  <View>
-                    <Text style={styles.modalTitle}>{property.propertyName}</Text>
-                    <Text style={styles.modalAddress}>{property.address}</Text>
-                  </View>
-                  <Text style={styles.modalEmoji}>🏠</Text>
-                </View>
-
-                <Text style={styles.pinLabel}>Enter Access PIN</Text>
-
-                <View style={styles.pinInputContainer}>
-                  <TextInput ref={pin1Ref} style={styles.pinBox} value={pin1} onChangeText={(val) => handlePinChange(val, 1)} onKeyPress={(e) => handlePinKeyPress(e, 1)} keyboardType="number-pad" maxLength={1} selectTextOnFocus />
-                  <TextInput ref={pin2Ref} style={styles.pinBox} value={pin2} onChangeText={(val) => handlePinChange(val, 2)} onKeyPress={(e) => handlePinKeyPress(e, 2)} keyboardType="number-pad" maxLength={1} selectTextOnFocus />
-                  <TextInput ref={pin3Ref} style={styles.pinBox} value={pin3} onChangeText={(val) => handlePinChange(val, 3)} onKeyPress={(e) => handlePinKeyPress(e, 3)} keyboardType="number-pad" maxLength={1} selectTextOnFocus />
-                  <TextInput ref={pin4Ref} style={styles.pinBox} value={pin4} onChangeText={(val) => handlePinChange(val, 4)} onKeyPress={(e) => handlePinKeyPress(e, 4)} keyboardType="number-pad" maxLength={1} selectTextOnFocus />
-                </View>
-
-                {pinError ? <Text style={styles.errorText}>{pinError}</Text> : null}
-
-                <TouchableOpacity style={[styles.confirmButton, isVerifyingPin && { opacity: 0.7 }]} onPress={handlePinSubmit} disabled={isVerifyingPin}>
-                  <Text style={styles.confirmButtonText}>{isVerifyingPin ? 'Verifying...' : 'Confirm PIN'}</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={styles.successIconContainer}>
-                  <CircleCheckBig size={80} color="white" />
-                </View>
-                <Text style={styles.successTitle}>Access PIN code confirmed</Text>
-                <Text style={styles.successSubtitle}>Click button below to View property locks</Text>
-
-                <TouchableOpacity style={styles.confirmButton} onPress={handleViewLocks}>
-                  <Text style={styles.confirmButtonText}>View Locks</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
+        <View style={styles.modalOverlay}>{renderPinModalContent()}</View>
       </Modal>
-
     </View>
   );
 }
@@ -960,6 +804,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  placeholderText: {
+    color: 'white',
+  },
   flashIndicator: {
     position: 'absolute',
     top: 15,
@@ -976,8 +823,14 @@ const styles = StyleSheet.create({
   flashIconText: {
     fontSize: 20,
   },
-  cameraHint: {
-    color: 'white',
+  cameraHintError: {
+    color: '#ef4444',
+    fontWeight: 'bold',
+    fontSize: 14,
+    marginTop: 16,
+  },
+  cameraHintSuccess: {
+    color: '#4ade80',
     fontSize: 14,
     marginTop: 16,
   },
@@ -1025,6 +878,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
   footer: {
     alignItems: 'center',
   },
@@ -1043,14 +899,24 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
     fontSize: 16,
   },
+  downloadButton: {
+    marginTop: 10,
+  },
+  downloadButtonText: {
+    fontSize: 14,
+    color: '#666',
+  },
   waitingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  sendIconContainer: {
+  declinedIconContainer: {
     marginBottom: 40,
+    backgroundColor: '#ef4444',
+    borderRadius: 50,
+    padding: 20,
   },
   waitingTitle: {
     fontSize: 24,
@@ -1066,8 +932,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 40,
   },
-  waitingButton: {
-    backgroundColor: '#E5E7EB',
+  tryAgainButton: {
+    backgroundColor: '#333',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 40,
@@ -1077,10 +943,16 @@ const styles = StyleSheet.create({
     width: 280,
     justifyContent: 'center',
   },
-  waitingButtonText: {
+  tryAgainButtonText: {
     color: '#9CA3AF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  webVideo: {
+    width: '100%',
+    height: '100%',
+    // @ts-ignore
+    objectFit: 'cover',
   },
   startRecordingButtonOverlay: {
     position: 'absolute',
@@ -1095,156 +967,24 @@ const styles = StyleSheet.create({
     borderColor: 'white',
     zIndex: 20,
   },
+  startRecordingButtonDisabled: {
+    borderColor: 'red',
+    opacity: 0.5,
+  },
   recordButtonInner: {
     width: 50,
     height: 50,
     borderRadius: 25,
     backgroundColor: '#ff4444',
   },
-  waitingSpinner: {
-    fontSize: 16,
-  },
-
-  // -- PIN Modal Styles --
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#222',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-    minHeight: 400,
-    alignItems: 'center',
-  },
-  closeButton: {
-    position: 'absolute',
-    right: 20,
-    top: 20,
-    zIndex: 1,
-  },
-  modalHeader: {
-    borderWidth: 1,
-    borderColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    marginBottom: 30,
-    marginTop: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  modalTitle: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  modalAddress: {
-    color: '#aaa',
-    fontSize: 12,
-  },
-  modalEmoji: {
-    fontSize: 24
-  },
-  pinLabel: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  pinInputContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 30,
-    width: '100%',
-  },
-  pinBox: {
-    backgroundColor: 'transparent',
-    color: 'white',
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    width: 65,
-    height: 75,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: 'white',
-  },
-  errorText: {
-    color: '#ff4444',
-    marginBottom: 10,
-  },
-  confirmButton: {
-    backgroundColor: '#4ade80',
-    width: '100%',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  confirmButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  successIconContainer: {
-    marginVertical: 40,
-  },
-  successTitle: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center'
-  },
-  successSubtitle: {
-    color: '#aaa',
-    marginBottom: 30,
-    textAlign: 'center'
-  },
-  // Locks View Styles
-  header: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    width: '100%',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  headerSubtitle: {
-    color: '#888',
-    fontSize: 14,
-  },
-  locksList: {
-    width: '100%',
-    paddingHorizontal: 20,
-  },
-  exitButton: {
-    backgroundColor: '#ef4444',
-    paddingVertical: 16,
-    borderRadius: 40,
-    alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 40,
-  },
-  exitButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  recordButtonInnerDisabled: {
+    backgroundColor: '#555',
   },
   waitingStatusContainer: {
     marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 60, // Match button height approx
+    height: 60,
   },
   waitingStatusText: {
     color: '#4ade80',
@@ -1255,5 +995,34 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end',
+  },
+  retryButton: {
+    backgroundColor: '#4ade80',
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 30,
+    marginTop: 30,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exitButtonStandalone: {
+    backgroundColor: '#ef4444',
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 30,
+    marginTop: 30,
+  },
+  exitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
