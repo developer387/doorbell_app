@@ -3,16 +3,16 @@
  * Zero-tolerance for race conditions or undefined states
  */
 
-export interface AgoraToken {
-  readonly token: string;
-  readonly channelName: string;
-  readonly uid: number;
-  readonly expiresAt: number;
-  readonly role: 'host' | 'audience';
+export interface CallConfig {
+  readonly appId: number;
+  readonly appSign: string; // Or token for production
+  readonly callId: string;
+  readonly userId: string;
+  readonly userName: string;
 }
 
 export interface CallParticipant {
-  readonly uid: number;
+  readonly uid: string;
   readonly role: 'owner' | 'guest';
   readonly joinedAt: number;
   readonly isConnected: boolean;
@@ -21,7 +21,7 @@ export interface CallParticipant {
 export interface CallSession {
   readonly id: string;
   readonly requestId: string;
-  readonly channelName: string;
+  readonly callId: string;
   readonly ownerId: string;
   readonly guestId: string;
   readonly status: CallStatus;
@@ -31,21 +31,21 @@ export interface CallSession {
   readonly participants: ReadonlyArray<CallParticipant>;
 }
 
-export type CallStatus = 
+export type CallStatus =
   | 'idle'
-  | 'pending'
+  | 'counting_down' // New state for the 5s countdown
+  | 'waiting_for_owner' // Guest waiting
   | 'active'
   | 'ended'
   | 'failed';
 
-export type CallEvent = 
-  | { type: 'OWNER_START_CALL'; requestId: string }
-  | { type: 'TOKEN_RECEIVED'; token: AgoraToken }
-  | { type: 'OWNER_JOINED'; uid: number }
-  | { type: 'GUEST_JOINED'; uid: number }
-  | { type: 'PARTICIPANT_LEFT'; uid: number }
-  | { type: 'CALL_ENDED'; reason: 'owner_ended' | 'error' | 'timeout' }
-  | { type: 'ERROR'; error: CallError };
+export type CallEvent =
+  | { type: 'START_COUNTDOWN' }
+  | { type: 'COUNTDOWN_FINISHED' } // Trigger "send video" / ring
+  | { type: 'OWNER_JOINED' }
+  | { type: 'CALL_ENDED'; reason: 'owner_ended' | 'guest_ended' | 'error' | 'timeout' }
+  | { type: 'ERROR'; error: CallError }
+  | { type: 'CONFIG_RECEIVED'; config: CallConfig };
 
 export interface CallError {
   readonly code: string;
@@ -61,12 +61,10 @@ export interface CallPermissions {
 }
 
 // State Machine States
-export type CallState = 
+export type CallState =
   | { type: 'idle' }
-  | { type: 'requesting_token'; requestId: string }
-  | { type: 'token_received'; token: AgoraToken; session: CallSession }
-  | { type: 'joining'; token: AgoraToken; session: CallSession }
-  | { type: 'active'; session: CallSession; participants: ReadonlyArray<CallParticipant> }
-  | { type: 'ending'; session: CallSession }
-  | { type: 'ended'; session: CallSession; reason: string }
-  | { type: 'error'; error: CallError; previousState?: CallState };
+  | { type: 'counting_down'; remainingSeconds: number }
+  | { type: 'waiting_for_owner'; callId: string } // "Send video" complete, waiting
+  | { type: 'active'; config: CallConfig } // In call
+  | { type: 'ended'; reason: string }
+  | { type: 'error'; error: CallError };
