@@ -34,9 +34,6 @@
       "@services/*": [
         "src/shared/services/*"
       ],
-      "@domain/*": [
-        "src/shared/domain/*"
-      ],
       "@styles/*": [
         "src/shared/styles/*"
       ],
