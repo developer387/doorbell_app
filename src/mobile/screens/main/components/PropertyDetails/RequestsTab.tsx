@@ -7,7 +7,7 @@ import { Body, MediumText, SmallText } from '@/typography';
 import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Loading } from '@/components';
-import { VideoCallModal } from './VideoCallModal';
+import { CallModal } from './CallModal';
 import { type GuestRequest } from '@/types';
 
 interface RequestsTabProps {
@@ -214,7 +214,7 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
                     }}
                   >
                     <MediumText variant="white" weight="bold">
-                      Accept & Start Video Call
+                      Accept
                     </MediumText>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -240,19 +240,11 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
         </View>
       ))}
       {activeCallId && (
-        <VideoCallModal
+        <CallModal
           visible={isCallVisible}
-          requestId={activeCallId}
-          guestName="Guest"
+          channelId={activeCallId}
+          propertyId={propertyId}
           onClose={() => {
-            setIsCallVisible(false);
-            setActiveCallId(null);
-          }}
-          onCallStarted={() => {
-            console.log('Video call started');
-          }}
-          onCallEnded={() => {
-            console.log('Video call ended');
             setIsCallVisible(false);
             setActiveCallId(null);
           }}
