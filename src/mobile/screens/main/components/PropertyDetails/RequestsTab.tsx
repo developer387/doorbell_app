@@ -7,7 +7,7 @@ import { Body, MediumText, SmallText } from '@/typography';
 import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Loading } from '@/components';
-import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
+import { VideoCallModal } from './VideoCallModal';
 import { type GuestRequest } from '@/types';
 
 interface RequestsTabProps {
@@ -34,6 +34,8 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
   const [guestRequests, setGuestRequests] = useState<GuestRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const [isCallVisible, setIsCallVisible] = useState(false);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -98,8 +100,9 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
-      })
-      } ${date.toLocaleTimeString('en-US', {
+      }) 
+      } ${ 
+      date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
@@ -197,32 +200,23 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
 
               {request.status === 'pending' && (
                 <View style={styles.actionButtons}>
-                  <View style={{ flex: 1 }}>
-                    <ZegoSendCallInvitationButton
-                      invitees={[{ userID: request.guestId || request.id, userName: 'Guest' }]}
-                      isVideoCall={true}
-                      resourceID={"zego_call"}
-                      onPressed={(code: number, message: string, p3: any) => {
-                        if (code === 0) {
-                          // Invitation sent successfully
-                          updateDoc(doc(db, 'properties', propertyId, 'guestRequests', request.id), {
-                            status: 'accepted',
-                            callStarted: true,
-                            channelId: request.id
-                          });
-                        } else {
-                          Alert.alert('Call Failed', 'Could not send invitation: ' + message);
-                        }
-                      }}
-                      width="100%"
-                      height={45}
-                      backgroundColor={colors.primary}
-                      borderRadius={8}
-                      textColor={colors.white}
-                      text="Accept & Call"
-                      textSize={16}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    style={styles.recordButton}
+                    onPress={() => {
+                      setActiveCallId(request.id);
+                      setIsCallVisible(true);
+                      // Update status to accepted
+                      updateDoc(doc(db, 'properties', propertyId, 'guestRequests', request.id), {
+                        status: 'accepted',
+                        callStarted: true,
+                        channelId: request.id
+                      });
+                    }}
+                  >
+                    <MediumText variant="white" weight="bold">
+                      Accept & Start Video Call
+                    </MediumText>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.declineButton}
                     onPress={() => handleDecline(request.id)}
@@ -245,6 +239,25 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
           ))}
         </View>
       ))}
+      {activeCallId && (
+        <VideoCallModal
+          visible={isCallVisible}
+          requestId={activeCallId}
+          guestName="Guest"
+          onClose={() => {
+            setIsCallVisible(false);
+            setActiveCallId(null);
+          }}
+          onCallStarted={() => {
+            console.log('Video call started');
+          }}
+          onCallEnded={() => {
+            console.log('Video call ended');
+            setIsCallVisible(false);
+            setActiveCallId(null);
+          }}
+        />
+      )}
     </ScrollView>
   );
 };
