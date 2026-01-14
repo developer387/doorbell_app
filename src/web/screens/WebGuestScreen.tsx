@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { House, Send, RefreshCw, X as CloseIcon } from 'lucide-react-native';
+import { House, Send, RefreshCw, X as CloseIcon, PhoneOff } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, type RouteProp } from '@react-navigation/native';
@@ -28,6 +28,7 @@ import {
   GuestStateMessage,
   LocksListView,
 } from '../components/guest';
+import { ActiveCall } from '@/components/ActiveCall';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -277,58 +278,53 @@ export default function WebGuestScreen() {
     setVideoAllowedLocks([]);
   };
 
-  const handleSend = async () => {
+  const handleStartCall = async () => {
     setIsSending(true);
     try {
-      let downloadUrl = '';
-      if (videoChunksRef.current.length > 0) {
-        const blobType = videoChunksRef.current[0]?.type || 'video/webm';
-        const extension = blobType.includes('mp4') ? 'mp4' : 'webm';
-        const videoBlob = new Blob(videoChunksRef.current, { type: blobType });
-
-        try {
-          const videoRef = ref(storage, `guest-videos/${guestId}.${extension}`);
-          await uploadBytes(videoRef, videoBlob);
-          downloadUrl = await getDownloadURL(videoRef);
-        } catch (uploadError) {
-          console.error('Error uploading video:', uploadError);
-          Alert.alert('Error', 'Failed to upload video. Please try again.');
-          setIsSending(false);
-          return;
-        }
-      }
-
+      // 1. Create the request document first to get an ID
       const requestData = {
-        guestId,
+        guestId: guestId || generateGuestId(), // Ensure we have a guest ID
         propertyId: initialProperty.propertyId || initialProperty.id,
         propertyName: initialProperty.propertyName || 'Property',
         timestamp: new Date().toISOString(),
-        status: 'pending',
+        status: 'pending_call', // Use a distinct status for calls
         userId: initialProperty.userId,
-        videoUrl: downloadUrl,
+        isVideoCall: true // Flag to indicate this is a live call
       };
 
       const docRef = await addDoc(
         collection(db, 'properties', initialProperty.id!, 'guestRequests'),
         requestData
       );
-      setRequestDocId(docRef.id);
 
+      // 2. Set the request ID which triggers the ActiveCall component
+      setRequestDocId(docRef.id);
+      setIsWaiting(true); // We are "waiting" in the call now effectively
+
+      // 3. Update property to notify owner
       await updateDoc(doc(db, 'properties', initialProperty.id!), {
         hasPendingRequest: true,
         lastRequestTimestamp: new Date().toISOString(),
       });
 
-      setIsRecording(false);
-      setIsWaiting(true);
-      setShowSendButton(false);
     } catch (error) {
-      console.error('Error sending guest request:', error);
-      Alert.alert('Error', 'Failed to send request. Please try again.');
+      console.error('Error starting call:', error);
+      Alert.alert('Error', 'Failed to start call. Please try again.');
     } finally {
       setIsSending(false);
     }
   };
+
+
+  const handleCallEnd = () => {
+    setRequestDocId(null);
+    setIsWaiting(false);
+    setIsPreviewing(false);
+    setGuestId(''); // Reset guest
+  };
+
+  // We reuse handleStartPreview to set up permissions, but instead of recording, we will offer "Start Call"
+
 
   const handleUnlockDoor = useCallback(async (deviceId: string) => {
     try {
@@ -579,74 +575,65 @@ export default function WebGuestScreen() {
       )}
 
       <View style={styles.centerContainer}>
-        {isPreviewing || isRecording || showSendButton ? (
+        {requestDocId && isWaiting ? (
+          <View style={styles.cameraContainer}>
+            <ActiveCall
+              propertyId={initialProperty.id!}
+              requestId={requestDocId}
+              mode="guest"
+              onCallEnd={handleCallEnd}
+            />
+          </View>
+        ) : (isPreviewing || isRecording || showSendButton) ? (
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraContainer}>
               {Platform.OS === 'web' ? (
-                showSendButton && recordedVideoUrl ? (
-                  <video
-                    src={recordedVideoUrl}
-                    controls
-                    playsInline
-                    style={styles.webVideo as any}
-                  />
-                ) : (
-                  <video
-                    autoPlay
-                    muted
-                    playsInline
-                    style={styles.webVideo as any}
-                    ref={(video) => {
-                      if (video && (isPreviewing || isRecording)) {
-                        navigator.mediaDevices
-                          .getUserMedia({ video: { facingMode: 'user' }, audio: false })
-                          .then((stream) => {
-                            video.srcObject = stream;
-                          })
-                          .catch((err) => console.error('Camera preview error:', err));
-                      }
-                    }}
-                  />
-                )
-              ) : permission?.granted ? (
-                <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+                // Simple preview before call
+                <video
+                  autoPlay
+                  muted
+                  playsInline
+                  style={styles.webVideo as any}
+                  ref={(video) => {
+                    if (video && isPreviewing) {
+                      navigator.mediaDevices
+                        .getUserMedia({ video: { facingMode: 'user' }, audio: false })
+                        .then((stream) => {
+                          video.srcObject = stream;
+                        })
+                        .catch((err) => console.error('Camera preview error:', err));
+                    }
+                  }}
+                />
               ) : (
-                <View style={styles.recordingPlaceholder}>
-                  <Text style={styles.placeholderText}>Camera Preview...</Text>
-                </View>
-              )}
-
-              {isRecording && (
-                <View style={styles.flashIndicator}>
-                  <View style={styles.flashIcon}>
-                    <Text style={styles.flashIconText}>⚡</Text>
-                  </View>
-                </View>
+                <CameraView ref={cameraRef} style={styles.camera} facing="front" />
               )}
             </View>
 
+            {/* Start Call Button Overlay */}
             {isPreviewing && (
               <TouchableOpacity
                 style={[
                   styles.startRecordingButtonOverlay,
-                  !hasFace && styles.startRecordingButtonDisabled,
+                  { backgroundColor: '#4ade80', borderColor: 'white' }
                 ]}
-                onPress={handleStartRecording}
+                onPress={handleStartCall}
               >
-                <View
-                  style={[styles.recordButtonInner, !hasFace && styles.recordButtonInnerDisabled]}
+                <PhoneOff // Using Phone icon if available, or just render a green circle
+                  color="white"
+                  size={32}
+                  style={{ transform: [{ rotate: '135deg' }] }} // Make it look like a phone? Or just use text.
                 />
+                {/* Or better, just a text button for clarity */}
               </TouchableOpacity>
             )}
 
-            {isPreviewing && !hasFace && (
-              <Text style={styles.cameraHintError}>
-                {Platform.OS === 'web' ? 'Face check simulated (Web)' : 'No Face Detected'}
-              </Text>
-            )}
-
-            {isPreviewing && hasFace && (
-              <Text style={styles.cameraHintSuccess}>Face Detected</Text>
+            {isPreviewing && (
+              <View style={{ marginTop: 20 }}>
+                <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartCall}>
+                  <Text style={styles.ringButtonText}>Start Video Call</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         ) : null}
