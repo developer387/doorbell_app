@@ -6,7 +6,13 @@ export interface GuestRequest {
     videoUrl?: string;
     videoBlob?: string; // Base64 or blob URL for web
     timestamp: string;
-    status: 'pending' | 'accepted' | 'declined';
+    status: 'pending' | 'accepted' | 'declined' | 'pending_call';
     userId: string; // Property owner's user ID
     agoraChannelName?: string; // Channel name for video call
+
+    // New fields for video call flow
+    videoWatched?: boolean;
+    isVideoCall?: boolean;
+    callStarted?: boolean;
+    channelId?: string;
 }
