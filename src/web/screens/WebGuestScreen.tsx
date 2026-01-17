@@ -278,40 +278,18 @@ export default function WebGuestScreen() {
     setVideoAllowedLocks([]);
   };
 
-  const handleSend = async () => {
-    if (!recordedVideoUrl && !videoChunksRef.current.length) {
-      Alert.alert('Error', 'No video recorded');
-      return;
-    }
-
+  const handleStartCall = async () => {
     setIsSending(true);
     try {
-      const guestIdToUse = guestId || generateGuestId();
-      let downloadUrl = '';
-
-      // Upload Video
-      if (recordedVideoUrl) {
-        const response = await fetch(recordedVideoUrl);
-        const blob = await response.blob();
-
-        const filename = `${guestIdToUse}_${Date.now()}.webm`;
-        const storageRef = ref(storage, `guest_videos/${filename}`);
-
-        await uploadBytes(storageRef, blob);
-        downloadUrl = await getDownloadURL(storageRef);
-      }
-
-      // Create Request
+      // 1. Create the request document first to get an ID
       const requestData = {
-        guestId: guestIdToUse,
+        guestId: guestId || generateGuestId(), // Ensure we have a guest ID
         propertyId: initialProperty.propertyId || initialProperty.id,
         propertyName: initialProperty.propertyName || 'Property',
         timestamp: new Date().toISOString(),
-        status: 'pending',
+        status: 'pending_call', // Use a distinct status for calls
         userId: initialProperty.userId,
-        isVideoCall: true,
-        videoUrl: downloadUrl,
-        videoWatched: false
+        isVideoCall: true // Flag to indicate this is a live call
       };
 
       const docRef = await addDoc(
@@ -319,20 +297,19 @@ export default function WebGuestScreen() {
         requestData
       );
 
+      // 2. Set the request ID which triggers the ActiveCall component
       setRequestDocId(docRef.id);
-      setIsWaiting(true);
-      setShowSendButton(false);
-      setRecordedVideoUrl(null); // Clean up local preview
+      setIsWaiting(true); // We are "waiting" in the call now effectively
 
-      // Update property to notify owner
+      // 3. Update property to notify owner
       await updateDoc(doc(db, 'properties', initialProperty.id!), {
         hasPendingRequest: true,
         lastRequestTimestamp: new Date().toISOString(),
       });
 
     } catch (error) {
-      console.error('Error sending video:', error);
-      Alert.alert('Error', 'Failed to send video. Please try again.');
+      console.error('Error starting call:', error);
+      Alert.alert('Error', 'Failed to start call. Please try again.');
     } finally {
       setIsSending(false);
     }
@@ -633,23 +610,28 @@ export default function WebGuestScreen() {
               )}
             </View>
 
-            {/* Start Recording Button Overlay */}
+            {/* Start Call Button Overlay */}
             {isPreviewing && (
               <TouchableOpacity
                 style={[
                   styles.startRecordingButtonOverlay,
-                  { backgroundColor: '#ef4444', borderColor: 'white' }
+                  { backgroundColor: '#4ade80', borderColor: 'white' }
                 ]}
-                onPress={handleStartRecording}
+                onPress={handleStartCall}
               >
-                <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'white' }} />
+                <PhoneOff // Using Phone icon if available, or just render a green circle
+                  color="white"
+                  size={32}
+                  style={{ transform: [{ rotate: '135deg' }] }} // Make it look like a phone? Or just use text.
+                />
+                {/* Or better, just a text button for clarity */}
               </TouchableOpacity>
             )}
 
             {isPreviewing && (
               <View style={{ marginTop: 20 }}>
-                <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartRecording}>
-                  <Text style={styles.ringButtonText}>Start Recording</Text>
+                <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartCall}>
+                  <Text style={styles.ringButtonText}>Start Video Call</Text>
                 </TouchableOpacity>
               </View>
             )}

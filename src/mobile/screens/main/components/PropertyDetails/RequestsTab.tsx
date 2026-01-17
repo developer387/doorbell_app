@@ -14,18 +14,11 @@ interface RequestsTabProps {
   propertyId: string;
 }
 
-const RequestVideoPlayer = ({ videoUrl, onVideoFinished }: { videoUrl: string, onVideoFinished?: () => void }) => {
+const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
   const player = useVideoPlayer(videoUrl, (player) => {
-    player.loop = false;
+    player.loop = true;
     player.play();
   });
-
-  useEffect(() => {
-    const subscription = player.addListener('playToEnd', () => {
-      if (onVideoFinished) onVideoFinished();
-    });
-    return () => subscription.remove();
-  }, [player, onVideoFinished]);
 
   return (
     <VideoView
@@ -96,16 +89,6 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
     }
   };
 
-  const handleVideoWatched = async (requestId: string) => {
-    try {
-      await updateDoc(doc(db, 'properties', propertyId, 'guestRequests', requestId), {
-        videoWatched: true
-      });
-    } catch (error) {
-      console.error('Error marking video watched:', error);
-    }
-  };
-
   const toggleVideo = (requestId: string) => {
     setPlayingVideo(playingVideo === requestId ? null : requestId);
   };
@@ -117,8 +100,9 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
-      })
-      } ${date.toLocaleTimeString('en-US', {
+      }) 
+      } ${ 
+      date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
@@ -207,13 +191,9 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
                         backgroundColor: '#000',
                       }}
                       src={request.videoUrl}
-                      onEnded={() => handleVideoWatched(request.id)}
                     />
                   ) : (
-                    <RequestVideoPlayer
-                      videoUrl={request.videoUrl}
-                      onVideoFinished={() => handleVideoWatched(request.id)}
-                    />
+                    <RequestVideoPlayer videoUrl={request.videoUrl} />
                   )}
                 </View>
               )}
@@ -221,14 +201,8 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
               {request.status === 'pending' && (
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
-                    style={[
-                      styles.recordButton,
-                      (!request.videoWatched && request.isVideoCall) && styles.disabledButton
-                    ]}
-                    disabled={!request.videoWatched && request.isVideoCall}
+                    style={styles.recordButton}
                     onPress={() => {
-                      if (!request.videoWatched && request.isVideoCall) return;
-
                       setActiveCallId(request.id);
                       setIsCallVisible(true);
                       // Update status to accepted
@@ -239,8 +213,8 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
                       });
                     }}
                   >
-                    <MediumText variant={(!request.videoWatched && request.isVideoCall) ? "secondary" : "white"} weight="bold">
-                      {(!request.videoWatched && request.isVideoCall) ? "Watch First" : "Accept"}
+                    <MediumText variant="white" weight="bold">
+                      Accept
                     </MediumText>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -352,10 +326,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
-  },
-  disabledButton: {
-    backgroundColor: colors.grey,
-    opacity: 0.5,
   },
   statusBadge: {
     paddingVertical: 8,
