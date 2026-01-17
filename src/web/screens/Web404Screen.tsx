@@ -38,7 +38,7 @@ export default function Web404Screen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0F172A', // Slate 900
+        backgroundColor: '#0F172A',
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 40,
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     errorCode: {
         fontSize: 80,
         fontWeight: 'bold',
-        color: '#f97316', // Orange 500
+        color: '#f97316',
         marginBottom: 8,
         letterSpacing: 2,
     },
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     },
     message: {
         fontSize: 16,
-        color: '#94a3b8', // Slate 400
+        color: '#94a3b8',
         textAlign: 'center',
         lineHeight: 24,
         marginBottom: 40,
