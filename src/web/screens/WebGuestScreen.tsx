@@ -71,8 +71,6 @@ export default function WebGuestScreen() {
   const [requestDocId, setRequestDocId] = useState<string | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
   const [isDeclined, setIsDeclined] = useState(false);
-  const [callReady, setCallReady] = useState(false); // Owner initiated call
-  const [isCallActive, setIsCallActive] = useState(false); // Guest joined call
   const [showLocksFromVideo, setShowLocksFromVideo] = useState(false);
   const [videoAllowedLocks, setVideoAllowedLocks] = useState<string[]>([]);
 
@@ -136,21 +134,11 @@ export default function WebGuestScreen() {
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
-
-          // Strict State Handling
-          if (data?.requestDeclined || data?.status === 'declined') {
+          if (data?.status === 'declined') {
             setIsDeclined(true);
             setIsWaiting(false);
-            setCallReady(false);
           }
-
-          if (data?.callInitiated === true) {
-            setCallReady(true);
-            // Note: We don't auto-join. Guest must click "Join Call".
-          }
-
-          if (data?.status === 'accepted' && !data?.callInitiated) {
-            // Fallback for non-call acceptance (unlock only)
+          if (data?.status === 'accepted') {
             setIsWaiting(false);
             if (data.allowedLocks && Array.isArray(data.allowedLocks)) {
               setVideoAllowedLocks(data.allowedLocks);
@@ -323,9 +311,7 @@ export default function WebGuestScreen() {
         userId: initialProperty.userId,
         isVideoCall: true,
         videoUrl: downloadUrl,
-        videoWatched: false,
-        callInitiated: false,
-        requestDeclined: false
+        videoWatched: false
       };
 
       const docRef = await addDoc(
@@ -579,9 +565,15 @@ export default function WebGuestScreen() {
     );
   }
 
-  const renderCentralContent = () => {
-    if (!isRecording && !isPreviewing && !guestId) {
-      return (
+  return (
+    <View style={styles.container}>
+      {guestId ? (
+        <View style={styles.guestIdBadge}>
+          <Text style={styles.guestIdText}>Guest ID: {guestId}</Text>
+        </View>
+      ) : null}
+
+      {!isRecording && !isPreviewing && !guestId && (
         <>
           <View style={styles.infoContainer}>
             <View style={styles.houseIconContainer}>
@@ -603,35 +595,32 @@ export default function WebGuestScreen() {
             </TouchableOpacity>
           )}
         </>
-      );
-    }
+      )}
 
-    if (isPreviewing || isRecording || showSendButton) {
-      return (
-        <View style={styles.cameraWrapper}>
+      <View style={styles.centerContainer}>
+        {requestDocId && isWaiting ? (
           <View style={styles.cameraContainer}>
-            {Platform.OS === 'web' ? (
-              showSendButton && recordedVideoUrl ? (
-                // REVIEW MODE: Playback recorded video
-                <video
-                  src={recordedVideoUrl}
-                  controls
-                  autoPlay
-                  playsInline
-                  style={styles.webVideo as any}
-                />
-              ) : (
-                // PREVIEW/RECORD MODE: Live Camera
+            <ActiveCall
+              propertyId={initialProperty.id!}
+              requestId={requestDocId}
+              mode="guest"
+              onCallEnd={handleCallEnd}
+            />
+          </View>
+        ) : (isPreviewing || isRecording || showSendButton) ? (
+          <View style={styles.cameraWrapper}>
+            <View style={styles.cameraContainer}>
+              {Platform.OS === 'web' ? (
+                // Simple preview before call
                 <video
                   autoPlay
                   muted
                   playsInline
                   style={styles.webVideo as any}
                   ref={(video) => {
-                    if (video && (isPreviewing || isRecording)) {
-                      // Only request stream if we are previewing or recording
+                    if (video && isPreviewing) {
                       navigator.mediaDevices
-                        .getUserMedia({ video: { facingMode: 'user' }, audio: true })
+                        .getUserMedia({ video: { facingMode: 'user' }, audio: false })
                         .then((stream) => {
                           video.srcObject = stream;
                         })
@@ -639,112 +628,91 @@ export default function WebGuestScreen() {
                     }
                   }}
                 />
-              )
-            ) : (
-              <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+              ) : (
+                <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+              )}
+            </View>
+
+            {/* Start Recording Button Overlay */}
+            {isPreviewing && (
+              <TouchableOpacity
+                style={[
+                  styles.startRecordingButtonOverlay,
+                  { backgroundColor: '#ef4444', borderColor: 'white' }
+                ]}
+                onPress={handleStartRecording}
+              >
+                <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'white' }} />
+              </TouchableOpacity>
+            )}
+
+            {isPreviewing && (
+              <View style={{ marginTop: 20 }}>
+                <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartRecording}>
+                  <Text style={styles.ringButtonText}>Start Recording</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
+        ) : null}
+      </View>
 
-          {/* Start Recording Button Overlay */}
-          {isPreviewing && !isRecording && !showSendButton && (
-            <TouchableOpacity
-              style={[
-                styles.startRecordingButtonOverlay,
-                { backgroundColor: '#ef4444', borderColor: 'white' }
-              ]}
-              onPress={handleStartRecording}
-            >
-              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'white' }} />
-            </TouchableOpacity>
-          )}
-
-          {isPreviewing && !isRecording && !showSendButton && (
-            <View style={{ marginTop: 20 }}>
-              <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartRecording}>
-                <Text style={styles.ringButtonText}>Start Recording</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+      {isRecording && !showSendButton && (
+        <View style={styles.recordingCounterContainer}>
+          <Text style={styles.recordingCounter}>{recordingTime}</Text>
         </View>
-      );
-    }
+      )}
 
-    return null;
-  };
-
-  return (
-    <View style={styles.container}>
-      {guestId ? (
-        <View style={styles.guestIdBadge}>
-          <Text style={styles.guestIdText}>Guest ID: {guestId}</Text>
+      {showSendButton && (
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity
+            style={[styles.retakeButton, isSending && styles.buttonDisabled]}
+            onPress={handleRetake}
+            disabled={isSending}
+          >
+            <RefreshCw size={16} color="#4ade80" />
+            <Text style={styles.retakeText}>Retake Video</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sendButton, isSending && styles.buttonDisabled]}
+            onPress={handleSend}
+            disabled={isSending}
+          >
+            <Send size={16} color="white" />
+            <Text style={styles.sendButtonText}>{isSending ? 'Sending...' : 'Send'}</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
+      )}
 
-      {renderCentralContent()}
+      {!isRecording && !isPreviewing && !guestId && !isWaiting && (
+        <View style={styles.footer}>
+          <Text style={styles.disclaimer}>
+            This triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
+          </Text>
+          <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>
+            <Text style={styles.linkText}>I have an access pin</Text>
+          </TouchableOpacity>
 
-
-      {
-        isRecording && !showSendButton && (
-          <View style={styles.recordingCounterContainer}>
-            <Text style={styles.recordingCounter}>{recordingTime}</Text>
-          </View>
-        )
-      }
-
-      {
-        showSendButton && (
-          <View style={styles.actionButtonsContainer}>
-            <TouchableOpacity
-              style={[styles.retakeButton, isSending && styles.buttonDisabled]}
-              onPress={handleRetake}
-              disabled={isSending}
-            >
-              <RefreshCw size={16} color="#4ade80" />
-              <Text style={styles.retakeText}>Retake Video</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sendButton, isSending && styles.buttonDisabled]}
-              onPress={handleSend}
-              disabled={isSending}
-            >
-              <Send size={16} color="white" />
-              <Text style={styles.sendButtonText}>{isSending ? 'Sending...' : 'Send'}</Text>
-            </TouchableOpacity>
-          </View>
-        )
-      }
-
-      {
-        !isRecording && !isPreviewing && !guestId && !isWaiting && (
-          <View style={styles.footer}>
-            <Text style={styles.disclaimer}>
-              This triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
-            </Text>
-            <TouchableOpacity style={styles.linkButton} onPress={() => setIsPinModalVisible(true)}>
-              <Text style={styles.linkText}>I have an access pin</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.downloadButton}
-              onPress={() => {
-                const apkUrl = 'application-3383c39d-4b0a-41ad-a70f-fb04b9626fb8';
-                if (Platform.OS === 'web') {
-                  const link = document.createElement('a');
-                  link.href = apkUrl;
-                  link.download = 'DoorbellApp_Guest.apk';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                } else {
-                  Linking.openURL(apkUrl);
-                }
-              }}
-            >
-              <Text style={styles.downloadButtonText}>Download Android App</Text>
-            </TouchableOpacity>
-          </View>
-        )
-      }
+          <TouchableOpacity
+            style={styles.downloadButton}
+            onPress={() => {
+              const apkUrl = 'application-3383c39d-4b0a-41ad-a70f-fb04b9626fb8';
+              if (Platform.OS === 'web') {
+                const link = document.createElement('a');
+                link.href = apkUrl;
+                link.download = 'DoorbellApp_Guest.apk';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              } else {
+                Linking.openURL(apkUrl);
+              }
+            }}
+          >
+            <Text style={styles.downloadButtonText}>Download Android App</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <Modal
         visible={isPinModalVisible}
@@ -754,7 +722,7 @@ export default function WebGuestScreen() {
       >
         <View style={styles.modalOverlay}>{renderPinModalContent()}</View>
       </Modal>
-    </View >
+    </View>
   );
 }
 
