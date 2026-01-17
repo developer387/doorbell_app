@@ -1,4 +1,4 @@
-import { useReducer, useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import {
     guestAccessReducer,
     initialGuestAccessState,
@@ -61,10 +61,7 @@ export function useGuestAccess({
                 setIsLoading(false);
 
                 if (result.status === 'success') {
-                    setPropertyData((prev) => {
-                        if (JSON.stringify(prev) === JSON.stringify(result.data)) return prev;
-                        return result.data;
-                    });
+                    setPropertyData(result.data);
                 } else if (result.status === 'not_found') {
                     dispatch({
                         type: 'SYSTEM_ERROR',
@@ -89,10 +86,7 @@ export function useGuestAccess({
                 setIsLoading(false);
 
                 if (result.status === 'success') {
-                    setPropertyData((prev) => {
-                        if (JSON.stringify(prev) === JSON.stringify(result.data)) return prev;
-                        return result.data;
-                    });
+                    setPropertyData(result.data);
                 } else if (result.status === 'not_found') {
                     dispatch({
                         type: 'SYSTEM_ERROR',
@@ -146,10 +140,7 @@ export function useGuestAccess({
                 }
 
                 const freshData = fetchResult.data;
-                setPropertyData((prev) => {
-                    if (JSON.stringify(prev) === JSON.stringify(freshData)) return prev;
-                    return freshData;
-                });
+                setPropertyData(freshData);
 
                 const accessResult = resolveGuestAccess(pin, freshData.guests, freshData.pinCode);
 
@@ -242,12 +233,12 @@ export function useGuestAccess({
         }
     }, []);
 
-    return useMemo(() => ({
+    return {
         state,
         propertyData,
         isLoading,
         verifyPin,
         confirmLockAccess,
         reset,
-    }), [state, propertyData, isLoading, verifyPin, confirmLockAccess, reset]);
+    };
 }
