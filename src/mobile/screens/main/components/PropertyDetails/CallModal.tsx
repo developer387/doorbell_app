@@ -6,7 +6,6 @@ import { X, Check } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
 import { Video, ResizeMode } from 'expo-av';
 import { type Property } from '@/types/Property';
-import { ActiveCall } from '@/components/ActiveCall';
 
 interface CallModalProps {
     visible: boolean;
@@ -20,13 +19,6 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
     const [property, setProperty] = useState<Property | null>(null);
     const [selectedLocks, setSelectedLocks] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isLiveCall, setIsLiveCall] = useState(false);
-
-    useEffect(() => {
-        if (!visible) {
-            setIsLiveCall(false);
-        }
-    }, [visible]);
 
     useEffect(() => {
         if (!visible || !channelId || !propertyId) return;
@@ -119,14 +111,7 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                     <View style={styles.content}>
                         {/* Video Section */}
                         <View style={styles.videoContainer}>
-                            {isLiveCall ? (
-                                <ActiveCall
-                                    propertyId={propertyId}
-                                    requestId={channelId}
-                                    mode="owner"
-                                    onCallEnd={() => setIsLiveCall(false)}
-                                />
-                            ) : requestData?.videoUrl ? (
+                            {requestData?.videoUrl ? (
                                 <Video
                                     style={styles.video}
                                     source={{ uri: requestData.videoUrl }}
@@ -141,15 +126,6 @@ export const CallModal = ({ visible, channelId, propertyId, onClose }: CallModal
                                 </View>
                             )}
                         </View>
-
-                        {!isLiveCall && (
-                            <TouchableOpacity
-                                style={styles.startCallButton}
-                                onPress={() => setIsLiveCall(true)}
-                            >
-                                <Text style={styles.startCallButtonText}>Start Live Video Call 📹</Text>
-                            </TouchableOpacity>
-                        )}
 
                         <Text style={styles.sectionTitle}>Select Access to Grant:</Text>
 
@@ -246,18 +222,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: 'white',
         marginBottom: 16,
-    },
-    startCallButton: {
-        backgroundColor: '#2563eb', // Blue
-        padding: 12,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    startCallButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
     },
     locksList: {
         flex: 1,
