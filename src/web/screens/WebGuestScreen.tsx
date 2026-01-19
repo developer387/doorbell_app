@@ -126,10 +126,12 @@ export default function WebGuestScreen() {
   }, [isRecording]);
 
   useEffect(() => {
-    if (!requestDocId || !initialProperty.id) return;
+    const targetId = propertyData?.id || initialProperty.id;
+
+    if (!requestDocId || !targetId) return;
 
     const unsubscribe = onSnapshot(
-      doc(db, 'properties', initialProperty.id, 'guestRequests', requestDocId),
+      doc(db, 'properties', targetId, 'guestRequests', requestDocId),
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
@@ -149,7 +151,7 @@ export default function WebGuestScreen() {
     );
 
     return () => unsubscribe();
-  }, [requestDocId, initialProperty.id]);
+  }, [requestDocId, initialProperty.id, propertyData?.id]);
 
   const handleStartPreview = async () => {
     if (!permission?.granted) {
@@ -298,23 +300,42 @@ export default function WebGuestScreen() {
         }
       }
 
+      // Ensure we have a valid Property Document ID
+      const targetPropertyId = initialProperty.id || propertyData?.id;
+      if (!targetPropertyId) {
+        console.error('Missing Property Document ID');
+        Alert.alert('Error', 'Property configuration error. Please remove and re-add the property.');
+        setIsSending(false);
+        return;
+      }
+
+      // Ensure we have a valid Owner User ID (critical for Firestore permissions)
+      // PropertyData is a DTO and might lack userId, so we rely on initialProperty or fallback
+      const targetUserId = initialProperty.userId || (propertyData as any)?.userId;
+
+      if (!targetUserId) {
+        console.warn('Missing Owner User ID - Request may not be visible to owner');
+        // We continue, as some legacy properties might lack strict ownership, but this is a risk.
+      }
+
       const requestData = {
         guestId,
-        propertyId: initialProperty.propertyId || initialProperty.id,
-        propertyName: initialProperty.propertyName || 'Property',
+        propertyId: initialProperty.propertyId || targetPropertyId, // Prefer business ID, fallback to Doc ID
+        propertyDocId: targetPropertyId, // Explicitly store the Doc ID for linkage debugging
+        propertyName: propertyData?.propertyName || initialProperty.propertyName || 'Property',
         timestamp: new Date().toISOString(),
         status: 'pending',
-        userId: initialProperty.userId,
+        userId: targetUserId,
         videoUrl: downloadUrl,
       };
 
       const docRef = await addDoc(
-        collection(db, 'properties', initialProperty.id!, 'guestRequests'),
+        collection(db, 'properties', targetPropertyId, 'guestRequests'),
         requestData
       );
       setRequestDocId(docRef.id);
 
-      await updateDoc(doc(db, 'properties', initialProperty.id!), {
+      await updateDoc(doc(db, 'properties', targetPropertyId), {
         hasPendingRequest: true,
         lastRequestTimestamp: new Date().toISOString(),
       });
