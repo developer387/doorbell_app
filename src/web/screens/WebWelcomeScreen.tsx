@@ -45,13 +45,14 @@ export default function WebWelcomeScreen() {
             // Find property by UUID
             const property = await PropertyService.findByQRCodeUUID(id);
 
-            if (property) {
+            if (property && PropertyService.validatePropertyDocumentId(property)) {
                 if (property.allowGuest === false) {
                     navigation.replace('Unavailable');
                 } else {
                     navigation.replace('Guest', { property });
                 }
             } else {
+                console.error('Property not found or invalid document ID for UUID:', id);
                 navigation.replace('Error');
             }
         } catch (error) {

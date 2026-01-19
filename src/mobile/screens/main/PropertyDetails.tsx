@@ -73,12 +73,12 @@ export const PropertyDetails = () => {
   }, [property?.smartLocks, propertyId]);
 
   React.useEffect(() => {
-    if (!propertyId) return;
-    const unsub = onSnapshot(collection(db, 'properties', propertyId, 'guestRequests'), (snap) => {
+    if (!property?.id) return;
+    const unsub = onSnapshot(collection(db, 'properties', property.id, 'guestRequests'), (snap) => {
       setRequestCount(snap.size);
     });
     return () => unsub();
-  }, [propertyId]);
+  }, [property?.id]);
 
   const chips: ChipItem[] = [
     { label: 'Property Details', value: 'propertyDetails' },
@@ -171,7 +171,7 @@ export const PropertyDetails = () => {
         />
       )}
 
-      {activeChip === 'request' && <RequestsTab propertyId={propertyId} />}
+      {activeChip === 'request' && <RequestsTab property={property} />}
 
       <PinSheet
         isVisible={activeSheet === 'pin'}

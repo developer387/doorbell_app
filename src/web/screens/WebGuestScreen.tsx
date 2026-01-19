@@ -19,7 +19,8 @@ import { useRoute, type RouteProp } from '@react-navigation/native';
 import { type Property } from '@/types/Property';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
-import { collection, addDoc, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, doc } from 'firebase/firestore';
+import { PropertyService } from '@/services/property.service';
 import { seamService } from '@/services/seam.service';
 import { useGuestAccess } from '@/hooks/guest';
 import {
@@ -28,6 +29,14 @@ import {
   GuestStateMessage,
   LocksListView,
 } from '../components/guest';
+import { 
+  VideoUploadErrorHandler, 
+  DatabaseErrorHandler, 
+  ValidationUtils, 
+  ErrorLogger, 
+  RetryUtils,
+  VideoRequestError 
+} from '@/utils/errorHandling';
 
 const generateGuestId = (): string => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -72,6 +81,9 @@ export default function WebGuestScreen() {
   const [isDeclined, setIsDeclined] = useState(false);
   const [showLocksFromVideo, setShowLocksFromVideo] = useState(false);
   const [videoAllowedLocks, setVideoAllowedLocks] = useState<string[]>([]);
+  const [isListenerConnected, setIsListenerConnected] = useState(true);
+  const [listenerError, setListenerError] = useState<string | null>(null);
+  const [showAcceptedMessage, setShowAcceptedMessage] = useState(false);
 
   const cameraRef = useRef<CameraView>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -126,34 +138,80 @@ export default function WebGuestScreen() {
   }, [isRecording]);
 
   useEffect(() => {
-    const targetId = propertyData?.id || initialProperty.id;
+    // Use the Firestore document ID consistently - prioritize propertyData over initialProperty
+    const targetDocId = propertyData?.id || initialProperty.id;
 
-    if (!requestDocId || !targetId) return;
+    if (!requestDocId || !targetDocId) return;
+
+    console.log('Setting up real-time listener for request:', requestDocId, 'in property:', targetDocId);
+    setIsListenerConnected(true);
+    setListenerError(null);
 
     const unsubscribe = onSnapshot(
-      doc(db, 'properties', targetId, 'guestRequests', requestDocId),
+      doc(db, 'properties', targetDocId, 'guestRequests', requestDocId),
       (snapshot) => {
+        // Connection is working
+        setIsListenerConnected(true);
+        setListenerError(null);
+        
         if (snapshot.exists()) {
           const data = snapshot.data();
+          console.log('Real-time update received for request:', requestDocId, 'status:', data?.status);
+          
           if (data?.status === 'declined') {
+            console.log('Request declined, updating UI state');
             setIsDeclined(true);
             setIsWaiting(false);
-          }
-          if (data?.status === 'accepted') {
+          } else if (data?.status === 'accepted') {
+            console.log('Request accepted, updating UI state');
             setIsWaiting(false);
-            if (data.allowedLocks && Array.isArray(data.allowedLocks)) {
-              setVideoAllowedLocks(data.allowedLocks);
-              setShowLocksFromVideo(true);
-            }
+            setShowAcceptedMessage(true);
+            
+            // Show accepted message for 2 seconds, then show locks
+            setTimeout(() => {
+              setShowAcceptedMessage(false);
+              if (data.allowedLocks && Array.isArray(data.allowedLocks)) {
+                setVideoAllowedLocks(data.allowedLocks);
+                setShowLocksFromVideo(true);
+              } else {
+                // Handle case where request is accepted but no locks are specified
+                console.warn('Request accepted but no allowed locks specified');
+                setVideoAllowedLocks([]);
+                setShowLocksFromVideo(true);
+              }
+            }, 2000);
+          } else if (data?.status === 'pending') {
+            // Ensure we stay in waiting state for pending requests
+            console.log('Request still pending, maintaining waiting state');
+            setIsWaiting(true);
+            setIsDeclined(false);
+            setShowLocksFromVideo(false);
           }
+        } else {
+          console.warn('Request document no longer exists:', requestDocId);
+          // Handle case where request document was deleted
+          setIsWaiting(false);
+          setIsDeclined(false);
+          setShowLocksFromVideo(false);
         }
+      },
+      (error) => {
+        console.error('Real-time listener error for request:', requestDocId, error);
+        setIsListenerConnected(false);
+        setListenerError(error.message || 'Connection error');
+        // Handle listener errors gracefully - don't break the UI
+        // Could show a reconnection message or retry logic here
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      console.log('Cleaning up real-time listener for request:', requestDocId);
+      unsubscribe();
+    };
   }, [requestDocId, initialProperty.id, propertyData?.id]);
 
   const handleStartPreview = async () => {
+    // Validate camera permissions
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
@@ -162,7 +220,73 @@ export default function WebGuestScreen() {
       }
     }
 
+    // Validate property information before proceeding
+    const targetPropertyDocId = propertyData?.id || initialProperty.id;
+    const targetUserId = initialProperty.userId;
+    const propertyName = propertyData?.propertyName || initialProperty.propertyName;
+
+    // Basic property validation
+    if (!targetPropertyDocId) {
+      Alert.alert('Property Error', 'Property information not available. Please scan the QR code again.');
+      return;
+    }
+
+    if (!targetUserId) {
+      Alert.alert('Property Error', 'Property owner information not available. Please scan the QR code again.');
+      return;
+    }
+
+    if (!propertyName || propertyName.trim().length === 0) {
+      Alert.alert('Property Error', 'Property name not available. Please scan the QR code again.');
+      return;
+    }
+
+    // Validate property document ID format
+    const propertyDocValidation = ValidationUtils.validatePropertyDocumentId(targetPropertyDocId);
+    if (!propertyDocValidation.isValid) {
+      ErrorLogger.logError(new Error(`Invalid property document ID: ${propertyDocValidation.error}`), {
+        operation: 'handleStartPreview',
+        additionalData: { step: 'property_validation', propertyDocId: targetPropertyDocId }
+      });
+      Alert.alert('Property Error', 'Invalid property information. Please scan the QR code again.');
+      return;
+    }
+
+    // Validate user ID format
+    const userIdValidation = ValidationUtils.validateUserId(targetUserId);
+    if (!userIdValidation.isValid) {
+      ErrorLogger.logError(new Error(`Invalid user ID: ${userIdValidation.error}`), {
+        operation: 'handleStartPreview',
+        additionalData: { step: 'user_id_validation', userId: targetUserId }
+      });
+      Alert.alert('Property Error', 'Invalid property owner information. Please scan the QR code again.');
+      return;
+    }
+
+    // Validate property name
+    const propertyNameValidation = ValidationUtils.validatePropertyName(propertyName);
+    if (!propertyNameValidation.isValid) {
+      ErrorLogger.logError(new Error(`Invalid property name: ${propertyNameValidation.error}`), {
+        operation: 'handleStartPreview',
+        additionalData: { step: 'property_name_validation', propertyName }
+      });
+      Alert.alert('Property Error', 'Invalid property name. Please scan the QR code again.');
+      return;
+    }
+
     const newGuestId = generateGuestId();
+    
+    // Validate generated guest ID
+    const guestIdValidation = ValidationUtils.validateGuestId(newGuestId);
+    if (!guestIdValidation.isValid) {
+      ErrorLogger.logError(new Error(`Generated invalid guest ID: ${guestIdValidation.error}`), {
+        operation: 'handleStartPreview',
+        additionalData: { step: 'guest_id_generation', generatedId: newGuestId }
+      });
+      Alert.alert('System Error', 'Failed to generate guest ID. Please try again.');
+      return;
+    }
+
     setGuestId(newGuestId);
     setIsPreviewing(true);
     setRecordedVideoUrl(null);
@@ -174,8 +298,45 @@ export default function WebGuestScreen() {
   };
 
   const handleStartRecording = async () => {
+    // Validate face detection
     if (!hasFace) {
       Alert.alert('Face Required', 'Please ensure your face is clearly visible.');
+      return;
+    }
+
+    // Validate guest ID is present
+    if (!guestId || guestId.trim().length === 0) {
+      Alert.alert('System Error', 'Guest ID not generated. Please try again.');
+      return;
+    }
+
+    // Validate guest ID format
+    const guestIdValidation = ValidationUtils.validateGuestId(guestId);
+    if (!guestIdValidation.isValid) {
+      ErrorLogger.logError(new Error(`Invalid guest ID: ${guestIdValidation.error}`), {
+        operation: 'handleStartRecording',
+        guestId,
+        additionalData: { step: 'guest_id_validation' }
+      });
+      Alert.alert('System Error', 'Invalid guest ID format. Please try again.');
+      return;
+    }
+
+    // Validate property information is available
+    const targetPropertyDocId = propertyData?.id || initialProperty.id;
+    if (!targetPropertyDocId) {
+      Alert.alert('Property Error', 'Property information not available. Please scan the QR code again.');
+      return;
+    }
+
+    const propertyDocValidation = ValidationUtils.validatePropertyDocumentId(targetPropertyDocId);
+    if (!propertyDocValidation.isValid) {
+      ErrorLogger.logError(new Error(`Invalid property document ID: ${propertyDocValidation.error}`), {
+        operation: 'handleStartRecording',
+        guestId,
+        additionalData: { step: 'property_validation', propertyDocId: targetPropertyDocId }
+      });
+      Alert.alert('Property Error', 'Invalid property information. Please scan the QR code again.');
       return;
     }
 
@@ -277,75 +438,251 @@ export default function WebGuestScreen() {
     setIsDeclined(false);
     setShowLocksFromVideo(false);
     setVideoAllowedLocks([]);
+    setIsWaiting(false);
+    setIsListenerConnected(true);
+    setListenerError(null);
+    setShowAcceptedMessage(false);
   };
 
   const handleSend = async () => {
     setIsSending(true);
+    
     try {
-      let downloadUrl = '';
+      // Comprehensive input validation before proceeding
+      const targetPropertyDocId = propertyData?.id || initialProperty.id;
+      const targetUserId = initialProperty.userId;
+      const businessPropertyId = initialProperty.propertyId || targetPropertyDocId;
+      const propertyName = propertyData?.propertyName || initialProperty.propertyName || 'Property';
+
+      // Create video blob for validation
+      let videoBlob: Blob | undefined;
       if (videoChunksRef.current.length > 0) {
         const blobType = videoChunksRef.current[0]?.type || 'video/webm';
-        const extension = blobType.includes('mp4') ? 'mp4' : 'webm';
-        const videoBlob = new Blob(videoChunksRef.current, { type: blobType });
-
-        try {
-          const videoRef = ref(storage, `guest-videos/${guestId}.${extension}`);
-          await uploadBytes(videoRef, videoBlob);
-          downloadUrl = await getDownloadURL(videoRef);
-        } catch (uploadError) {
-          console.error('Error uploading video:', uploadError);
-          Alert.alert('Error', 'Failed to upload video. Please try again.');
-          setIsSending(false);
-          return;
-        }
+        videoBlob = new Blob(videoChunksRef.current, { type: blobType });
       }
 
-      // Ensure we have a valid Property Document ID
-      const targetPropertyId = initialProperty.id || propertyData?.id;
-      if (!targetPropertyId) {
-        console.error('Missing Property Document ID');
-        Alert.alert('Error', 'Property configuration error. Please remove and re-add the property.');
-        setIsSending(false);
+      // Pre-flight validation with network check
+      const preFlightValidation = await ValidationUtils.validatePreFlightChecks({
+        guestId,
+        propertyDocId: targetPropertyDocId,
+        propertyName,
+        userId: targetUserId,
+        videoBlob,
+        checkNetwork: true
+      });
+
+      if (!preFlightValidation.isValid) {
+        const errorMessage = preFlightValidation.errors.join('\n');
+        ErrorLogger.logError(new Error(`Pre-flight validation failed: ${errorMessage}`), {
+          operation: 'handleSend',
+          guestId,
+          additionalData: { 
+            step: 'pre_flight_validation', 
+            errors: preFlightValidation.errors,
+            warnings: preFlightValidation.warnings
+          }
+        });
+        Alert.alert('Validation Error', `Please correct the following issues:\n\n${errorMessage}`);
         return;
       }
 
-      // Ensure we have a valid Owner User ID (critical for Firestore permissions)
-      // PropertyData is a DTO and might lack userId, so we rely on initialProperty or fallback
-      const targetUserId = initialProperty.userId || (propertyData as any)?.userId;
-
-      if (!targetUserId) {
-        console.warn('Missing Owner User ID - Request may not be visible to owner');
-        // We continue, as some legacy properties might lack strict ownership, but this is a risk.
+      // Show warnings if any (but don't block the operation)
+      if (preFlightValidation.warnings.length > 0) {
+        console.warn('Pre-flight validation warnings:', preFlightValidation.warnings);
       }
 
-      const requestData = {
+      // Comprehensive validation of all inputs
+      const inputValidation = ValidationUtils.validateRequestCreationInputs({
         guestId,
-        propertyId: initialProperty.propertyId || targetPropertyId,
-        propertyDocId: targetPropertyId,
-        propertyName: propertyData?.propertyName || initialProperty.propertyName || 'Property',
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-        userId: targetUserId || null, // Sanitize undefined to null for Firestore
-        videoUrl: downloadUrl || '',
-      };
-
-      const docRef = await addDoc(
-        collection(db, 'properties', targetPropertyId, 'guestRequests'),
-        requestData
-      );
-      setRequestDocId(docRef.id);
-
-      await updateDoc(doc(db, 'properties', targetPropertyId), {
-        hasPendingRequest: true,
-        lastRequestTimestamp: new Date().toISOString(),
+        propertyDocId: targetPropertyDocId,
+        propertyName,
+        userId: targetUserId,
+        videoUrl: '', // Will be set after upload
+        videoBlob
       });
 
-      setIsRecording(false);
-      setIsWaiting(true);
-      setShowSendButton(false);
+      if (!inputValidation.isValid) {
+        const errorMessage = inputValidation.errors.join('\n');
+        ErrorLogger.logError(new Error(`Input validation failed: ${errorMessage}`), {
+          operation: 'handleSend',
+          guestId,
+          additionalData: { step: 'input_validation', errors: inputValidation.errors }
+        });
+        Alert.alert('Validation Error', `Please correct the following issues:\n\n${errorMessage}`);
+        return;
+      }
+
+      const sanitizedInputs = inputValidation.sanitizedInputs!;
+
+      let downloadUrl = '';
+      
+      // Video upload with comprehensive error handling
+      if (videoBlob) {
+        // Additional video format validation
+        const extension = videoBlob.type.includes('mp4') ? 'mp4' : 'webm';
+        const formatValidation = ValidationUtils.validateVideoFormat(videoBlob, extension);
+        
+        if (!formatValidation.isValid) {
+          ErrorLogger.logError(new Error(`Video format validation failed: ${formatValidation.error}`), {
+            operation: 'handleSend',
+            guestId: sanitizedInputs.guestId,
+            additionalData: { step: 'video_format_validation', blobType: videoBlob.type, blobSize: videoBlob.size }
+          });
+          Alert.alert('Video Format Error', formatValidation.error!);
+          return;
+        }
+
+        try {
+          // Upload with retry logic
+          downloadUrl = await RetryUtils.withRetry(
+            async () => {
+              const videoRef = ref(storage, `guest-videos/${sanitizedInputs.guestId}.${extension}`);
+              await uploadBytes(videoRef, videoBlob!);
+              const url = await getDownloadURL(videoRef);
+              
+              // Validate that we got a valid download URL
+              if (!url || !url.startsWith('https://')) {
+                throw new Error('Invalid video URL received from storage');
+              }
+              
+              return url;
+            },
+            {
+              maxAttempts: 3,
+              baseDelay: 2000,
+              maxDelay: 10000,
+              retryCondition: (error) => {
+                // Retry on network errors and some storage errors
+                return error.code === 'storage/retry-limit-exceeded' ||
+                       error.code === 'storage/unknown' ||
+                       error.message?.includes('network');
+              }
+            }
+          );
+        } catch (uploadError: any) {
+          const handledError = VideoUploadErrorHandler.handleError(uploadError);
+          ErrorLogger.logError(handledError, {
+            operation: 'handleSend',
+            guestId: sanitizedInputs.guestId,
+            additionalData: { step: 'video_upload', blobSize: videoBlob.size }
+          });
+          Alert.alert('Upload Error', handledError.userMessage);
+          return;
+        }
+      } else {
+        Alert.alert('Recording Error', 'No video recorded. Please record a video first.');
+        return;
+      }
+
+      // Prepare and validate final request data
+      const currentTimestamp = new Date().toISOString();
+      const requestData = {
+        guestId: sanitizedInputs.guestId,
+        propertyId: businessPropertyId,
+        propertyDocId: sanitizedInputs.propertyDocId,
+        propertyName: sanitizedInputs.propertyName,
+        timestamp: currentTimestamp,
+        status: 'pending' as const,
+        userId: sanitizedInputs.userId,
+        videoUrl: downloadUrl,
+      };
+
+      // Validate timestamp
+      const timestampValidation = ValidationUtils.validateTimestamp(currentTimestamp);
+      if (!timestampValidation.isValid) {
+        const error = new Error(`Timestamp validation failed: ${timestampValidation.error}`);
+        ErrorLogger.logError(error, {
+          operation: 'handleSend',
+          guestId: sanitizedInputs.guestId,
+          additionalData: { step: 'timestamp_validation', timestamp: currentTimestamp }
+        });
+        Alert.alert('System Error', 'System time validation failed. Please check your device clock.');
+        return;
+      }
+
+      // Final validation of complete request data
+      const requestValidation = ValidationUtils.validateGuestRequestData(requestData);
+      if (!requestValidation.isValid) {
+        const error = new Error(`Request validation failed: ${requestValidation.errors.join(', ')}`);
+        ErrorLogger.logError(error, {
+          operation: 'handleSend',
+          guestId: sanitizedInputs.guestId,
+          propertyId: sanitizedInputs.propertyDocId,
+          additionalData: { step: 'final_request_validation', errors: requestValidation.errors }
+        });
+        Alert.alert('Validation Error', 'Request data is invalid. Please try again.');
+        return;
+      }
+
+      try {
+        // Create request with retry logic
+        const docRef = await RetryUtils.withRetry(
+          () => addDoc(collection(db, 'properties', sanitizedInputs.propertyDocId, 'guestRequests'), requestData),
+          {
+            maxAttempts: 3,
+            baseDelay: 1000,
+            retryCondition: (error) => {
+              // Retry on network errors but not on permission/validation errors
+              return error.code === 'unavailable' || 
+                     error.code === 'deadline-exceeded' ||
+                     error.message?.includes('network');
+            }
+          }
+        );
+        
+        if (!docRef.id) {
+          throw new Error('Failed to create request document');
+        }
+        
+        setRequestDocId(docRef.id);
+
+        // Update property pending status with error handling
+        try {
+          await PropertyService.updatePendingRequestStatus(sanitizedInputs.propertyDocId, true);
+        } catch (statusError: any) {
+          // Log the error but don't fail the entire operation
+          ErrorLogger.logError(statusError, {
+            operation: 'handleSend',
+            guestId: sanitizedInputs.guestId,
+            propertyId: sanitizedInputs.propertyDocId,
+            additionalData: { step: 'property_status_update' }
+          });
+          console.warn('Failed to update property pending status, but request was created successfully');
+        }
+
+        // Success - update UI state
+        setIsRecording(false);
+        setIsWaiting(true);
+        setShowSendButton(false);
+        
+        console.log(`Successfully created guest request ${docRef.id} for property ${sanitizedInputs.propertyDocId}`);
+        
+      } catch (dbError: any) {
+        const handledError = DatabaseErrorHandler.handleError(dbError, 'create_guest_request');
+        ErrorLogger.logError(handledError, {
+          operation: 'handleSend',
+          guestId: sanitizedInputs.guestId,
+          propertyId: sanitizedInputs.propertyDocId,
+          userId: sanitizedInputs.userId,
+          additionalData: { step: 'database_operation' }
+        });
+        Alert.alert('Request Error', handledError.userMessage);
+        return;
+      }
+      
     } catch (error: any) {
-      console.error('Error sending guest request:', error);
-      Alert.alert('Error', `Failed to send request: ${error.message || 'Unknown error'}`);
+      // Handle any unexpected errors
+      const errorMessage = error instanceof VideoRequestError 
+        ? error.userMessage 
+        : 'An unexpected error occurred. Please try again.';
+        
+      ErrorLogger.logError(error, {
+        operation: 'handleSend',
+        guestId,
+        additionalData: { step: 'unexpected_error' }
+      });
+      
+      Alert.alert('Unexpected Error', errorMessage);
     } finally {
       setIsSending(false);
     }
@@ -379,6 +716,7 @@ export default function WebGuestScreen() {
     resetGuestAccess();
     setShowLocksFromVideo(false);
     setVideoAllowedLocks([]);
+    setShowAcceptedMessage(false);
     handleRetake();
   }, [resetGuestAccess]);
 
@@ -524,6 +862,23 @@ export default function WebGuestScreen() {
     );
   }
 
+  if (showAcceptedMessage) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.waitingContainer}>
+          <View style={styles.acceptedIconContainer}>
+            <Text style={styles.acceptedIcon}>✓</Text>
+          </View>
+          <Text style={styles.waitingTitle}>Request Accepted!</Text>
+          <Text style={styles.waitingText}>
+            The property owner has approved your request.
+            {'\n\n'}Preparing access to available locks...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   if (showLocksFromVideo) {
     const videoLocks = getVideoAllowedLocksData();
     if (videoLocks.length === 0) {
@@ -558,10 +913,20 @@ export default function WebGuestScreen() {
           <Text style={styles.waitingTitle}>Request Declined</Text>
           <Text style={styles.waitingText}>
             The property owner has declined your request at this time.
+            {'\n\n'}You can try again with a new video message.
           </Text>
-          <TouchableOpacity style={styles.tryAgainButton} onPress={handleRetake}>
-            <Text style={styles.tryAgainButtonText}>Try Again</Text>
-          </TouchableOpacity>
+          <View style={styles.declinedActionsContainer}>
+            <TouchableOpacity style={styles.tryAgainButton} onPress={handleRetake}>
+              <RefreshCw size={16} color="white" />
+              <Text style={styles.tryAgainButtonText}>Record New Video</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.pinAccessButton} 
+              onPress={() => setIsPinModalVisible(true)}
+            >
+              <Text style={styles.pinAccessButtonText}>I have an access pin</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -586,10 +951,32 @@ export default function WebGuestScreen() {
           </View>
 
           {isWaiting ? (
-            <View style={styles.waitingStatusContainer}>
-              <ActivityIndicator size="small" color="#4ade80" />
-              <Text style={styles.waitingStatusText}>Request Sent</Text>
-              <Text style={styles.waitingStatusSubtext}>Waiting for owner...</Text>
+            <View style={styles.waitingFullContainer}>
+              <View style={styles.waitingStatusContainer}>
+                <ActivityIndicator size="large" color="#4ade80" />
+                <Text style={styles.waitingStatusText}>Request Sent</Text>
+                <Text style={styles.waitingStatusSubtext}>
+                  {!isListenerConnected && listenerError 
+                    ? 'Connection issue - retrying...' 
+                    : 'Waiting for owner response...'}
+                </Text>
+                {!isListenerConnected && (
+                  <Text style={styles.connectionErrorText}>
+                    {listenerError || 'Connection lost'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.waitingActionsContainer}>
+                <Text style={styles.waitingHelpText}>
+                  The property owner will see your video message and respond shortly.
+                </Text>
+                <TouchableOpacity 
+                  style={styles.cancelWaitingButton} 
+                  onPress={handleRetake}
+                >
+                  <Text style={styles.cancelWaitingButtonText}>Cancel & Try Again</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <TouchableOpacity style={styles.ringButtonCapsule} onPress={handleStartPreview}>
@@ -939,6 +1326,21 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     padding: 20,
   },
+  acceptedIconContainer: {
+    marginBottom: 40,
+    backgroundColor: '#4ade80',
+    borderRadius: 50,
+    padding: 20,
+    width: 120,
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  acceptedIcon: {
+    fontSize: 60,
+    color: 'white',
+    fontWeight: 'bold',
+  },
   waitingTitle: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -954,7 +1356,7 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   tryAgainButton: {
-    backgroundColor: '#333',
+    backgroundColor: '#4ade80',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 40,
@@ -963,11 +1365,29 @@ const styles = StyleSheet.create({
     gap: 8,
     width: 280,
     justifyContent: 'center',
+    marginBottom: 16,
   },
   tryAgainButtonText: {
-    color: '#9CA3AF',
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  declinedActionsContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  pinAccessButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#666',
+  },
+  pinAccessButtonText: {
+    color: '#4ade80',
+    fontSize: 14,
+    fontWeight: '500',
   },
   webVideo: {
     width: '100%',
@@ -1002,10 +1422,40 @@ const styles = StyleSheet.create({
     backgroundColor: '#555',
   },
   waitingStatusContainer: {
-    marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 60,
+    marginBottom: 40,
+  },
+  waitingFullContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  waitingActionsContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  waitingHelpText: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 30,
+    maxWidth: 280,
+  },
+  cancelWaitingButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#666',
+  },
+  cancelWaitingButtonText: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '500',
   },
   waitingStatusText: {
     color: '#4ade80',
@@ -1016,6 +1466,12 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     marginTop: 4,
+  },
+  connectionErrorText: {
+    color: '#ef4444',
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
