@@ -320,13 +320,13 @@ export default function WebGuestScreen() {
 
       const requestData = {
         guestId,
-        propertyId: initialProperty.propertyId || targetPropertyId, // Prefer business ID, fallback to Doc ID
-        propertyDocId: targetPropertyId, // Explicitly store the Doc ID for linkage debugging
+        propertyId: initialProperty.propertyId || targetPropertyId,
+        propertyDocId: targetPropertyId,
         propertyName: propertyData?.propertyName || initialProperty.propertyName || 'Property',
         timestamp: new Date().toISOString(),
         status: 'pending',
-        userId: targetUserId,
-        videoUrl: downloadUrl,
+        userId: targetUserId || null, // Sanitize undefined to null for Firestore
+        videoUrl: downloadUrl || '',
       };
 
       const docRef = await addDoc(
@@ -343,9 +343,9 @@ export default function WebGuestScreen() {
       setIsRecording(false);
       setIsWaiting(true);
       setShowSendButton(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending guest request:', error);
-      Alert.alert('Error', 'Failed to send request. Please try again.');
+      Alert.alert('Error', `Failed to send request: ${error.message || 'Unknown error'}`);
     } finally {
       setIsSending(false);
     }
