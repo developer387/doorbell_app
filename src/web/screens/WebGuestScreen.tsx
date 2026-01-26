@@ -5,16 +5,24 @@ import { useWebRTC } from '../../shared/hooks/useWebRTC';
 import { db } from '../../shared/config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
+import { PinInput } from '../components/guest/PinInput';
+import { Lock, Bell } from 'lucide-react-native';
 
 export default function WebGuestScreen() {
   const route = useRoute<any>();
   const initialProperty = route.params?.property;
+  // Ensure propertyId can be accessed safely
   const propertyId = initialProperty?.id;
+  const propertyName = initialProperty?.propertyName || 'Doorbell';
+  const propertyAddress = initialProperty?.address || '';
 
   const [requestId, setRequestId] = useState<string>('');
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
   // Hooks for Signaling and WebRTC
   const { request, addIceCandidate } = useGuestRequest(requestId);
+  // Only init WebRTC if on mobile/web appropriately, though logic inside hook handles platform
   const { pc, init, addLocalTracks, remoteStream, localStream, createIceCandidate } = useWebRTC(Platform.OS !== 'web');
 
   useEffect(() => {
@@ -54,6 +62,17 @@ export default function WebGuestScreen() {
       console.error("Failed to ring doorbell", err);
       alert("Could not start video call. Please check permissions.");
     }
+  };
+
+  const handlePinSubmit = async (pin: string) => {
+    setIsVerifyingPin(true);
+    // TODO: Implement actual PIN verification logic against Seam/Backend
+    // For now, simulate delay
+    setTimeout(() => {
+      setIsVerifyingPin(false);
+      alert(`PIN ${pin} entered. Verification logic pending.`);
+      setShowPinInput(false);
+    }, 1000);
   };
 
   // 2. Handle Answer from Owner
@@ -96,15 +115,41 @@ export default function WebGuestScreen() {
     }
   }, [pc.current, request?.iceCandidates, requestId]);
 
+  if (showPinInput) {
+    return (
+      <View style={styles.container}>
+        <PinInput
+          onSubmit={handlePinSubmit}
+          onCancel={() => setShowPinInput(false)}
+          isLoading={isVerifyingPin}
+          propertyName={propertyName}
+          propertyAddress={propertyAddress}
+        />
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Guest Doorbell</Text>
+      {/* Property Info Header */}
+      <View style={styles.propertyInfo}>
+        <Text style={styles.propertyTitle}>{propertyName}</Text>
+        {propertyAddress ? <Text style={styles.propertyAddress}>{propertyAddress}</Text> : null}
+      </View>
 
       {/* State: Idle (Not Ringing) */}
       {!requestId && (
-        <TouchableOpacity style={styles.btn} onPress={ringDoorbell}>
-          <Text style={styles.btnText}>🔔 Ring Doorbell</Text>
-        </TouchableOpacity>
+        <View style={styles.actionContainer}>
+          <TouchableOpacity style={styles.btn} onPress={ringDoorbell}>
+            <Bell size={24} color="#fff" style={{ marginRight: 10 }} />
+            <Text style={styles.btnText}>Ring Doorbell</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setShowPinInput(true)}>
+            <Lock size={24} color="#fff" style={{ marginRight: 10 }} />
+            <Text style={styles.btnText}>I have an Access PIN</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* State: Calling / Connected */}
@@ -155,10 +200,31 @@ export default function WebGuestScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a', padding: 20, alignItems: 'center', justifyContent: 'center' },
-  header: { fontSize: 24, color: '#fff', marginBottom: 20, fontWeight: 'bold' },
-  btn: { backgroundColor: '#e67e22', padding: 15, borderRadius: 30, minWidth: 200, alignItems: 'center', marginVertical: 10 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: '#111827', padding: 20, alignItems: 'center', justifyContent: 'center' }, // slate-900
+  propertyInfo: { marginBottom: 40, alignItems: 'center' },
+  propertyTitle: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
+  propertyAddress: { fontSize: 16, color: '#9ca3af' }, // gray-400
+
+  actionContainer: { width: '100%', maxWidth: 400, gap: 16 },
+
+  btn: {
+    backgroundColor: '#f59e0b', // amber-500
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5
+  },
+  btnSecondary: {
+    backgroundColor: '#374151', // gray-700
+    shadowColor: '#000',
+  },
+  btnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+
   statusContainer: { alignItems: 'center', width: '100%', flex: 1 },
   statusText: { color: '#4ade80', fontSize: 18, marginBottom: 20 },
   videoGrid: { flexDirection: 'column', width: '100%', height: 400, position: 'relative' },
