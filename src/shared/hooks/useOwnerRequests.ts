@@ -14,7 +14,7 @@ export const useOwnerRequests = (propertyId: string) => {
         const unsub = onSnapshot(q, (snap) => {
             const list: GuestRequest[] = [];
             snap.forEach((docSnap) => {
-                list.push({ id: docSnap.id, ...(docSnap.data() as GuestRequest) });
+                list.push({ ...(docSnap.data() as GuestRequest), id: docSnap.id });
             });
             // Sort by newest? Firestore query can do orderBy but requires index. Client sort is fine for now.
             list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -45,7 +45,7 @@ export const useOwnerRequests = (propertyId: string) => {
     }, []);
 
     // Helper to read remote answer
-    const getAnswer = useCallback(async (requestId: string) => {
+    const getAnswer = useCallback(async (_requestId: string) => {
         // Warning: This is a one-time fetch. Real-time is handled by the subscription above for 'requests' 
         // but 'callAnswer' is part of the doc.
         // Usually we check requests.find(r => r.id===id).callAnswer
@@ -60,5 +60,5 @@ export const useOwnerRequests = (propertyId: string) => {
         []
     );
 
-    return { requests, setStatus, setCallOffer, addIceCandidate, getAnswer };
+    return { requests, setStatus, setCallOffer, addIceCandidate, getAnswer, setCallAnswer };
 };

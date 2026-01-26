@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { useGuestRequest } from '../../shared/hooks/useGuestRequest';
 import { useWebRTC } from '../../shared/hooks/useWebRTC';
-import { db, storage } from '../../shared/config/firebase';
+import { db } from '../../shared/config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useRoute } from '@react-navigation/native';
 
 export default function WebGuestScreen() {
@@ -12,18 +11,11 @@ export default function WebGuestScreen() {
   const initialProperty = route.params?.property;
   const propertyId = initialProperty?.id;
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [blobUrl, setBlobUrl] = useState<string>('');
-  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [requestId, setRequestId] = useState<string>('');
-  const [uploading, setUploading] = useState(false);
 
   // New hooks
-  const { request, setCallAnswer, addIceCandidate } = useGuestRequest(requestId);
-  const { pc, init, addLocalTracks, remoteStream, localStream, createSessionDescription, createIceCandidate } = useWebRTC(Platform.OS !== 'web');
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const { request, addIceCandidate } = useGuestRequest(requestId);
+  const { pc, init, addLocalTracks, remoteStream, localStream, createIceCandidate } = useWebRTC(Platform.OS !== 'web');
 
   useEffect(() => {
     if (!propertyId) {
