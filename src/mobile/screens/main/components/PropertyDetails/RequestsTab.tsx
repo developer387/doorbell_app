@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, FlatList } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Play, Circle } from 'lucide-react-native';
+import { Circle } from 'lucide-react-native';
 import { colors } from '@/styles/colors';
-import { Body, MediumText, SmallText } from '@/typography';
-import { collection, query, onSnapshot, updateDoc, doc, orderBy } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import { Loading } from '@/components';
+import { Body, SmallText } from '@/typography';
+import { useOwnerRequests } from '@/shared/hooks/useOwnerRequests';
+import { useWebRTC } from '@/shared/hooks/useWebRTC';
 import { CallModal } from './CallModal';
-import { type GuestRequest, type Property } from '@/types';
-import { DatabaseErrorHandler, ErrorLogger, RetryUtils, ValidationUtils } from '@/utils/errorHandling';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 interface RequestsTabProps {
-  property: Property | null;
+  propertyId: string;
 }
 
 const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
@@ -31,547 +30,175 @@ const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
   );
 };
 
-export const RequestsTab = ({ property }: RequestsTabProps) => {
-  const [guestRequests, setGuestRequests] = useState<GuestRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
+  const { requests, setStatus, setCallAnswer, addIceCandidate } = useOwnerRequests(propertyId);
+  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, createIceCandidate } = useWebRTC(true);
+
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
-  const [isCallVisible, setIsCallVisible] = useState(false);
 
-  useEffect(() => {
-    if (!property?.id) {
-      setLoading(false);
-      return;
-    }
-
-    // Validate property document ID
-    const validation = ValidationUtils.validatePropertyDocumentId(property.id);
-    if (!validation.isValid) {
-      ErrorLogger.logError(new Error(validation.error), {
-        operation: 'RequestsTab_useEffect',
-        propertyId: property.id,
-        additionalData: { step: 'property_validation' }
-      });
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    // Listen to guest requests subcollection using the correct Firestore document ID
-    const q = query(
-      collection(db, 'properties', property.id, 'guestRequests'),
-      orderBy('timestamp', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(
-      q, 
-      async (snapshot) => {
-        try {
-          const requests: GuestRequest[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            // Validate that the request has required fields
-            if (data.guestId && data.timestamp && data.status) {
-              requests.push({
-                id: doc.id,
-                ...data,
-              } as GuestRequest);
-            } else {
-              console.warn('Invalid guest request data:', doc.id, data);
-              ErrorLogger.logError(new Error('Invalid guest request data'), {
-                operation: 'RequestsTab_snapshot',
-                propertyId: property.id,
-                additionalData: { requestId: doc.id, invalidData: data }
-              });
-            }
-          });
-          
-          // Sort by timestamp to ensure proper ordering (backup to Firestore orderBy)
-          requests.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          
-          setGuestRequests(requests);
-
-          // Check if all requests are resolved (not pending)
-          const hasPending = requests.some((r) => r.status === 'pending');
-
-          if (!hasPending && property?.id) {
-            await updatePropertyPendingStatus(property.id, false);
-          }
-          setLoading(false);
-        } catch (error: any) {
-          ErrorLogger.logError(error, {
-            operation: 'RequestsTab_snapshot_processing',
-            propertyId: property.id,
-            additionalData: { snapshotSize: snapshot.size }
-          });
-          console.error('Error processing guest requests snapshot:', error);
-          setLoading(false);
-        }
-      },
-      (error) => {
-        const handledError = DatabaseErrorHandler.handleError(error, 'listen_guest_requests');
-        ErrorLogger.logError(handledError, {
-          operation: 'RequestsTab_snapshot_error',
-          propertyId: property.id
-        });
-        console.error('Error listening to guest requests:', handledError.userMessage);
-        setLoading(false);
-        
-        // Show user-friendly error message for persistent connection issues
-        if (error.code === 'permission-denied') {
-          Alert.alert('Access Error', 'Unable to access guest requests. Please check your permissions.');
-        } else if (error.code === 'unavailable') {
-          Alert.alert('Connection Error', 'Service temporarily unavailable. Please try refreshing.');
-        }
-      }
-    );
-
-    return () => {
-      unsubscribe();
-    };
-  }, [property?.id]);
-
-  const updatePropertyPendingStatus = async (propId: string, hasPending: boolean) => {
+  // ANSWER CALL LOGIC
+  const answerCall = async (req: any) => {
     try {
-      // Validate property document ID
-      const validation = ValidationUtils.validatePropertyDocumentId(propId);
-      if (!validation.isValid) {
-        throw new Error(validation.error);
+      console.log("Answering call:", req.id);
+      setActiveCallId(req.id);
+
+      // 1. Init & Media
+      await init();
+      await addLocalTracks();
+
+      if (!req.callOffer) {
+        alert("Call invalid: no offer from guest.");
+        return;
       }
 
-      const updateData: any = {
-        hasPendingRequest: hasPending,
-      };
-      
-      // If no pending requests, also clear the last request timestamp
-      if (!hasPending) {
-        updateData.lastRequestTimestamp = null;
-      }
-      
-      // Execute with retry logic for network resilience
-      await RetryUtils.withRetry(
-        () => updateDoc(doc(db, 'properties', propId), updateData),
-        {
-          maxAttempts: 2,
-          baseDelay: 1000,
-          retryCondition: (error) => {
-            // Retry on network errors but not on permission/validation errors
-            return error.code === 'unavailable' || 
-                   error.code === 'deadline-exceeded' ||
-                   error.message?.includes('network');
-          }
-        }
-      );
-      
-      console.log(`Property ${propId} pending status updated to: ${hasPending}`);
-    } catch (error: any) {
-      const handledError = DatabaseErrorHandler.handleError(error, 'updatePropertyPendingStatus');
-      ErrorLogger.logError(handledError, {
-        operation: 'updatePropertyPendingStatus',
-        propertyId: propId,
-        additionalData: { hasPending }
-      });
-      
-      // Don't show user alert for this background operation
-      // The UI will still work correctly even if this fails
-      console.warn('Failed to update property pending status:', handledError.userMessage);
-    }
-  };
+      // 2. Set Remote Desc (Guest's Offer)
+      const desc = createSessionDescription(req.callOffer);
+      await pc.current?.setRemoteDescription(desc);
 
-  const handleDecline = async (requestId: string) => {
-    if (!property?.id) {
-      const error = new Error('Missing property document ID for decline action');
-      ErrorLogger.logError(error, {
-        operation: 'handleDecline',
-        propertyId: property?.id,
-        additionalData: { requestId }
-      });
-      Alert.alert('Configuration Error', 'Property configuration error. Please refresh and try again.');
-      return;
-    }
+      // 3. Create Answer
+      const answer = await pc.current?.createAnswer();
+      await pc.current?.setLocalDescription(answer);
 
-    // Validate request ID
-    if (!requestId || typeof requestId !== 'string' || requestId.trim().length === 0) {
-      const error = new Error('Invalid request ID for decline action');
-      ErrorLogger.logError(error, {
-        operation: 'handleDecline',
-        propertyId: property.id,
-        additionalData: { requestId }
-      });
-      Alert.alert('Validation Error', 'Invalid request. Please refresh and try again.');
-      return;
-    }
-    
-    try {
-      // Validate and sanitize status
-      const statusValidation = ValidationUtils.validateRequestStatus('declined');
-      if (!statusValidation.isValid) {
-        throw new Error(statusValidation.error);
+      // 4. Send Answer
+      if (answer) {
+        await setCallAnswer(req.id, answer);
       }
-
-      // Update request status with retry logic
-      await RetryUtils.withRetry(
-        () => updateDoc(doc(db, 'properties', property.id, 'guestRequests', requestId.trim()), {
-          status: statusValidation.sanitizedStatus,
-        }),
-        {
-          maxAttempts: 3,
-          baseDelay: 1000,
-          retryCondition: (error) => {
-            // Retry on network errors but not on permission/validation errors
-            return error.code === 'unavailable' || 
-                   error.code === 'deadline-exceeded' ||
-                   error.message?.includes('network');
-          }
-        }
-      );
-      
-      // Check if this was the last pending request and update property state
-      const remainingPendingRequests = guestRequests.filter(
-        r => r.id !== requestId && r.status === 'pending'
-      );
-      
-      if (remainingPendingRequests.length === 0) {
-        await updatePropertyPendingStatus(property.id, false);
-      }
-      
-      console.log(`Successfully declined request ${requestId}`);
-    } catch (error: any) {
-      const handledError = DatabaseErrorHandler.handleError(error, 'decline_request');
-      ErrorLogger.logError(handledError, {
-        operation: 'handleDecline',
-        propertyId: property.id,
-        additionalData: { requestId }
-      });
-      Alert.alert('Error', handledError.userMessage);
-    }
-  };
-
-  const handleAccept = async (requestId: string) => {
-    if (!property?.id) {
-      const error = new Error('Missing property document ID for accept action');
-      ErrorLogger.logError(error, {
-        operation: 'handleAccept',
-        propertyId: property?.id,
-        additionalData: { requestId }
-      });
-      Alert.alert('Configuration Error', 'Property configuration error. Please refresh and try again.');
-      return;
-    }
-    
-    try {
-      // Update request status with retry logic
-      await RetryUtils.withRetry(
-        () => updateDoc(doc(db, 'properties', property.id, 'guestRequests', requestId), {
-          status: 'accepted',
-          callStarted: true,
-          channelId: requestId
-        }),
-        {
-          maxAttempts: 3,
-          baseDelay: 1000,
-          retryCondition: (error) => {
-            // Retry on network errors but not on permission/validation errors
-            return error.code === 'unavailable' || 
-                   error.code === 'deadline-exceeded' ||
-                   error.message?.includes('network');
-          }
-        }
-      );
-      
-      // Check if this was the last pending request and update property state
-      const remainingPendingRequests = guestRequests.filter(
-        r => r.id !== requestId && r.status === 'pending'
-      );
-      
-      if (remainingPendingRequests.length === 0) {
-        await updatePropertyPendingStatus(property.id, false);
-      }
-      
-      console.log(`Successfully accepted request ${requestId}`);
-    } catch (error: any) {
-      const handledError = DatabaseErrorHandler.handleError(error, 'accept_request');
-      ErrorLogger.logError(handledError, {
-        operation: 'handleAccept',
-        propertyId: property.id,
-        additionalData: { requestId }
-      });
-      Alert.alert('Error', handledError.userMessage);
-      
-      // Reset call modal state on error
+    } catch (e) {
+      console.error("Failed to answer call", e);
       setActiveCallId(null);
-      setIsCallVisible(false);
+      alert("Failed to connect call.");
     }
   };
+
+  // SIGNALING & ICE Handling (For Active Call)
+  useEffect(() => {
+    if (!activeCallId) return;
+
+    // Listen only for ICE candidates updates from Guest here? 
+    // Actually, Guest sends ICE candidates to the doc. We need to watch the doc.
+    const unsub = onSnapshot(doc(db, 'guestRequests', activeCallId), async (snap) => {
+      const data = snap.data();
+      if (!data) return;
+
+      // We don't need to listen for Answer anymore (we create it).
+      // We listen for Remote ICE candidates (from Guest)
+      if (data.iceCandidates) {
+        data.iceCandidates.forEach((c: any) => {
+          if (c.from === 'guest') {
+            try {
+              const candidate = createIceCandidate(c.candidate);
+              pc.current?.addIceCandidate(candidate);
+            } catch (e) { }
+          }
+        });
+      }
+
+      // Auto-close if status becomes 'ended' externally?
+      if (data.status === 'ended') {
+        close();
+        setActiveCallId(null);
+      }
+    });
+
+    return () => unsub();
+  }, [activeCallId]);
+
+  // SEND ICE (Owner Candidates -> Guest)
+  useEffect(() => {
+    if (!pc.current || !activeCallId) return;
+    const onIce = (e: any) => {
+      if (e.candidate) {
+        addIceCandidate(activeCallId, e.candidate.toJSON());
+      }
+    };
+    pc.current.onicecandidate = onIce;
+  }, [pc.current, activeCallId]);
+
 
   const toggleVideo = (requestId: string) => {
     setPlayingVideo(playingVideo === requestId ? null : requestId);
   };
 
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return (
-      `${date.toLocaleDateString('en-US', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      }) 
-      } ${ 
-      date.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-      })}`
-    );
-  };
-
-  const groupByMonth = (requests: GuestRequest[]) => {
-    const groups: Record<string, GuestRequest[]> = {};
-    requests.forEach((request) => {
-      const date = new Date(request.timestamp);
-      const monthYear = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      if (!groups[monthYear]) {
-        groups[monthYear] = [];
-      }
-      groups[monthYear].push(request);
-    });
-    return groups;
-  };
-
-  const requestsByMonth = groupByMonth(guestRequests);
-
-
-  if (loading) {
-    return (
-      <View style={styles.content}>
-        <Loading />
-      </View>
-    );
-  }
-
-  if (guestRequests.length === 0) {
+  if (requests.length === 0) {
     return (
       <View style={styles.emptyState}>
-        <Body variant="secondary">No guest requests yet</Body>
-        <SmallText variant="secondary" style={{ marginTop: 8, textAlign: 'center' }}>
-          Guest requests will appear here when visitors scan your property's QR code and submit video messages
-        </SmallText>
+        <Body variant="secondary">No requests yet</Body>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-      {Object.keys(requestsByMonth).map((monthYear) => (
-        <View key={monthYear}>
-          <Body weight="bolder" style={styles.monthHeader}>
-            {monthYear}
-          </Body>
-          {requestsByMonth[monthYear].map((request) => (
-            <View key={request.id} style={styles.requestCard}>
-              <View style={styles.requestHeader}>
-                <View style={styles.guestInfo}>
-                  <View style={styles.avatarPlaceholder}>
-                    <Circle size={24} color={colors.primary} />
-                  </View>
-                  <View>
-                    <Body weight="bolder">Guest</Body>
-                    <SmallText variant="secondary">ID: {request.guestId}</SmallText>
-                  </View>
+    <View style={styles.content}>
+      <FlatList
+        data={requests}
+        keyExtractor={item => item.id}
+        renderItem={({ item: request }) => (
+          <View style={[styles.requestCard, request.status === 'calling' && { borderColor: '#4ade80', borderWidth: 2 }]}>
+            <View style={styles.requestHeader}>
+              <View style={styles.guestInfo}>
+                <View style={styles.avatarPlaceholder}><Circle size={24} color={colors.primary} /></View>
+                <View>
+                  <Body weight="bolder">Guest Message</Body>
+                  <SmallText variant="secondary">{new Date(request.createdAt?.seconds * 1000 || Date.now()).toLocaleString()}</SmallText>
                 </View>
+              </View>
+              {request.videoUrl && (
                 <TouchableOpacity onPress={() => toggleVideo(request.id)}>
-                  <Body variant="primary" style={styles.watchVideoButton}>
-                    Watch Video
-                    <Play size={16} color={colors.primary} style={{ marginLeft: 4 }} />
-                  </Body>
+                  <Text style={{ color: colors.primary }}>Watch Video</Text>
                 </TouchableOpacity>
-              </View>
-
-              <View style={styles.requestDetails}>
-                <View style={styles.detailRow}>
-                  <Body>Date & Time:</Body>
-                  <Body variant="secondary">{formatDate(request.timestamp)}</Body>
-                </View>
-                {request.propertyName && (
-                  <View style={styles.detailRow}>
-                    <Body>Property:</Body>
-                    <Body variant="secondary">{request.propertyName}</Body>
-                  </View>
-                )}
-                <View style={styles.detailRow}>
-                  <Body>Status:</Body>
-                  <Body variant={request.status === 'pending' ? 'primary' : 'secondary'}>
-                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                  </Body>
-                </View>
-              </View>
-
-              {/* Video Player */}
-              {playingVideo === request.id && (
-                <View style={styles.videoContainer}>
-                  {request.videoUrl ? (
-                    Platform.OS === 'web' ? (
-                      <video
-                        controls
-                        autoPlay
-                        playsInline
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'contain',
-                          backgroundColor: '#000',
-                        }}
-                        src={request.videoUrl}
-                      />
-                    ) : (
-                      <RequestVideoPlayer videoUrl={request.videoUrl} />
-                    )
-                  ) : (
-                    <View style={styles.noVideoContainer}>
-                      <Body variant="secondary">Video not available</Body>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {request.status === 'pending' && (
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    style={styles.recordButton}
-                    onPress={() => {
-                      setActiveCallId(request.id);
-                      setIsCallVisible(true);
-                      handleAccept(request.id);
-                    }}
-                  >
-                    <MediumText variant="white" weight="bold">
-                      Accept
-                    </MediumText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.declineButton}
-                    onPress={() => handleDecline(request.id)}
-                  >
-                    <MediumText variant="white" weight="bold">
-                      Decline
-                    </MediumText>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {request.status !== 'pending' && (
-                <View style={styles.statusBadge}>
-                  <SmallText variant="secondary">
-                    {request.status === 'accepted' ? '✓ Accepted' : '✗ Declined'}
-                  </SmallText>
-                </View>
               )}
             </View>
-          ))}
-        </View>
-      ))}
-      {activeCallId && property?.id && (
+
+            {/* Video Player */}
+            {playingVideo === request.id && request.videoUrl && (
+              <View style={styles.videoContainer}>
+                <RequestVideoPlayer videoUrl={request.videoUrl} />
+              </View>
+            )}
+
+            {/* Answer Button */}
+            {request.status === 'calling' && (
+              <TouchableOpacity style={[styles.recordButton, { backgroundColor: '#22c55e' }]} onPress={() => answerCall(request)}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>📞 Answer Call</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Fallback for pending (old flow or failed calls) */}
+            {request.status === 'pending' && (
+              <Text style={{ color: '#888', fontStyle: 'italic' }}>Missed / Pending Request</Text>
+            )}
+
+            <Text style={{ marginTop: 5, color: '#888' }}>Status: {request.status}</Text>
+          </View>
+        )}
+      />
+
+      {activeCallId && (
         <CallModal
-          visible={isCallVisible}
-          channelId={activeCallId}
-          propertyId={property.id}
+          visible={true}
+          requestId={activeCallId}
+          pc={pc.current}
+          remoteStream={remoteStream}
+          localStream={localStream}
           onClose={() => {
-            setIsCallVisible(false);
+            close();
             setActiveCallId(null);
+            setStatus(activeCallId, 'ended');
           }}
         />
       )}
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  content: {
-    flex: 1,
-    marginTop: 16,
-  },
-  monthHeader: {
-    marginVertical: 12,
-  },
-  requestCard: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.borderColor,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  requestHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  guestInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.activeTagBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  watchVideoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  requestDetails: {
-    gap: 8,
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  videoContainer: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: 12,
-    backgroundColor: '#000',
-  },
-  noVideoContainer: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.borderColor,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  declineButton: {
-    flex: 1,
-    backgroundColor: colors.error,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  recordButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  statusBadge: {
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  emptyState: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
+  content: { flex: 1, padding: 16 },
+  requestCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
+  requestHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  guestInfo: { flexDirection: 'row', gap: 10 },
+  avatarPlaceholder: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#eee' },
+  videoContainer: { height: 200, backgroundColor: '#000', marginBottom: 10, borderRadius: 8 },
+  recordButton: { backgroundColor: colors.primary, padding: 12, borderRadius: 8, alignItems: 'center' },
+  emptyState: { padding: 40, alignItems: 'center' }
 });
