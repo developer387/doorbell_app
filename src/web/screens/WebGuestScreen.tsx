@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Image, Animated } from 'react-native';
 import { useGuestRequest } from '../../shared/hooks/useGuestRequest';
 import { useWebRTC } from '../../shared/hooks/useWebRTC';
 import { db } from '../../shared/config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
 import { PinInput } from '../components/guest/PinInput';
-import { Lock, Bell } from 'lucide-react-native';
+import { Bell, House } from 'lucide-react-native';
 
 export default function WebGuestScreen() {
   const route = useRoute<any>();
@@ -20,9 +20,30 @@ export default function WebGuestScreen() {
   const [showPinInput, setShowPinInput] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
+  // Animation for the ring button ripple effect
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    // Start pulse animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
   // Hooks for Signaling and WebRTC
   const { request, addIceCandidate } = useGuestRequest(requestId);
-  // Only init WebRTC if on mobile/web appropriately, though logic inside hook handles platform
+  // Only init WebRTC if on mobile/web appropriately
   const { pc, init, addLocalTracks, remoteStream, localStream, createIceCandidate } = useWebRTC(Platform.OS !== 'web');
 
   useEffect(() => {
@@ -66,8 +87,6 @@ export default function WebGuestScreen() {
 
   const handlePinSubmit = async (pin: string) => {
     setIsVerifyingPin(true);
-    // TODO: Implement actual PIN verification logic against Seam/Backend
-    // For now, simulate delay
     setTimeout(() => {
       setIsVerifyingPin(false);
       alert(`PIN ${pin} entered. Verification logic pending.`);
@@ -131,24 +150,40 @@ export default function WebGuestScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Property Info Header */}
-      <View style={styles.propertyInfo}>
-        <Text style={styles.propertyTitle}>{propertyName}</Text>
-        {propertyAddress ? <Text style={styles.propertyAddress}>{propertyAddress}</Text> : null}
-      </View>
-
       {/* State: Idle (Not Ringing) */}
       {!requestId && (
-        <View style={styles.actionContainer}>
-          <TouchableOpacity style={styles.btn} onPress={ringDoorbell}>
-            <Bell size={24} color="#fff" style={{ marginRight: 10 }} />
-            <Text style={styles.btnText}>Ring Doorbell</Text>
-          </TouchableOpacity>
+        <View style={styles.contentWrapper}>
 
-          <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setShowPinInput(true)}>
-            <Lock size={24} color="#fff" style={{ marginRight: 10 }} />
-            <Text style={styles.btnText}>I have an Access PIN</Text>
-          </TouchableOpacity>
+          {/* 1. House Icon / Avatar */}
+          <View style={styles.iconWrapper}>
+            <House size={64} color="#f59e0b" fill="#f59e0b" fillOpacity={0.2} />
+          </View>
+
+          {/* 2. Property Info */}
+          <View style={styles.textWrapper}>
+            <Text style={styles.propertyTitle}>{propertyName}</Text>
+            {propertyAddress ? <Text style={styles.propertyAddress}>{propertyAddress}</Text> : null}
+          </View>
+
+          {/* 3. Main Action: Ring Doorbell */}
+          <View style={styles.ringButtonContainer}>
+            {/* Ripple Effect Background */}
+            <Animated.View style={[styles.pulseCircle, { transform: [{ scale: pulseAnim }], opacity: 0.3 }]} />
+            <Animated.View style={[styles.pulseCircle, { transform: [{ scale: pulseAnim }], opacity: 0.1, width: 220, height: 220 }]} />
+
+            <TouchableOpacity style={styles.ringButton} onPress={ringDoorbell} activeOpacity={0.8}>
+              <Bell size={64} color="#fff" fill="#fff" />
+              <Text style={styles.ringButtonText}>Ring Doorbell</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 4. Secondary Action: Pin */}
+          <View style={styles.footerAction}>
+            <TouchableOpacity onPress={() => setShowPinInput(true)}>
+              <Text style={styles.linkText}>I have an Access PIN</Text>
+            </TouchableOpacity>
+          </View>
+
         </View>
       )}
 
@@ -200,34 +235,107 @@ export default function WebGuestScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111827', padding: 20, alignItems: 'center', justifyContent: 'center' }, // slate-900
-  propertyInfo: { marginBottom: 40, alignItems: 'center' },
-  propertyTitle: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-  propertyAddress: { fontSize: 16, color: '#9ca3af' }, // gray-400
-
-  actionContainer: { width: '100%', maxWidth: 400, gap: 16 },
-
-  btn: {
-    backgroundColor: '#f59e0b', // amber-500
-    padding: 18,
-    borderRadius: 12,
+  container: {
+    flex: 1,
+    backgroundColor: '#18181b', // zinc-900 
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    shadowColor: '#f59e0b',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5
+    justifyContent: 'center'
   },
-  btnSecondary: {
-    backgroundColor: '#374151', // gray-700
-    shadowColor: '#000',
+  contentWrapper: {
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 400,
+    paddingHorizontal: 20
   },
-  btnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 
-  statusContainer: { alignItems: 'center', width: '100%', flex: 1 },
-  statusText: { color: '#4ade80', fontSize: 18, marginBottom: 20 },
-  videoGrid: { flexDirection: 'column', width: '100%', height: 400, position: 'relative' },
-  remoteVideo: { flex: 1, backgroundColor: '#000', borderRadius: 10, overflow: 'hidden' },
-  localVideo: { position: 'absolute', bottom: 10, right: 10, width: 100, height: 150, backgroundColor: '#333', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#fff' }
+  // Icon Section
+  iconWrapper: {
+    marginBottom: 24,
+    padding: 20,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)', // amber with opacity
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.2)'
+  },
+
+  // Text Section
+  textWrapper: {
+    alignItems: 'center',
+    marginBottom: 60
+  },
+  propertyTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.5
+  },
+  propertyAddress: {
+    fontSize: 16,
+    color: '#a1a1aa', // zinc-400
+    textAlign: 'center',
+    lineHeight: 24
+  },
+
+  // Ring Button Section
+  ringButtonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 80,
+    position: 'relative',
+    height: 200,
+    width: 200
+  },
+  pulseCircle: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 100,
+    backgroundColor: '#10b981', // emerald-500 (A nice green ring color)
+    zIndex: 0
+  },
+  ringButton: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)', // Glassmorphic
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#10b981', // emerald-500 border
+    zIndex: 1,
+    shadowColor: '#10b981',
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 10
+  },
+  ringButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1
+  },
+
+  // Footer Actions
+  footerAction: {
+    position: 'absolute',
+    bottom: -60 // Adjust based on screen height usually, but flex container handles it. 
+    // In this flow, we'll rely on margin since we are in a centered view.
+  },
+  linkText: {
+    color: '#10b981', // Link color
+    fontSize: 16,
+    fontWeight: '600',
+    textDecorationLine: 'underline'
+  },
+
+  // Calling States
+  statusContainer: { alignItems: 'center', width: '100%', flex: 1, padding: 20 },
+  statusText: { color: '#4ade80', fontSize: 20, marginBottom: 20, fontWeight: 'bold' },
+  videoGrid: { flexDirection: 'column', width: '100%', height: '80%', position: 'relative', borderRadius: 20, overflow: 'hidden', backgroundColor: '#000' },
+  remoteVideo: { flex: 1, backgroundColor: '#000' },
+  localVideo: { position: 'absolute', bottom: 20, right: 20, width: 120, height: 180, backgroundColor: '#333', borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' }
 });
