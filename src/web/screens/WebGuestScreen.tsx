@@ -22,6 +22,7 @@ export default function WebGuestScreen() {
   const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'failed' | 'timeout'>('idle');
   const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>('unknown');
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [debugMessage, setDebugMessage] = useState<string>('');
 
   // Refs for tracking state
   const answerProcessed = useRef(false);
@@ -60,139 +61,97 @@ export default function WebGuestScreen() {
     }
   }, [propertyId]);
 
-  // Check if camera/mic permissions are available
-  const checkPermissions = async (): Promise<'granted' | 'denied' | 'prompt'> => {
-    if (Platform.OS !== 'web') return 'granted';
-
-    try {
-      // Try to query permission status (not all browsers support this)
-      if (navigator.permissions && navigator.permissions.query) {
-        const [cameraResult, micResult] = await Promise.all([
-          navigator.permissions.query({ name: 'camera' as PermissionName }),
-          navigator.permissions.query({ name: 'microphone' as PermissionName })
-        ]);
-
-        if (cameraResult.state === 'denied' || micResult.state === 'denied') {
-          return 'denied';
-        }
-        if (cameraResult.state === 'granted' && micResult.state === 'granted') {
-          return 'granted';
-        }
-        return 'prompt';
-      }
-      // If permissions API not supported, assume we need to prompt
-      return 'prompt';
-    } catch (e) {
-      console.log('[Permissions] Query not supported, will prompt');
-      return 'prompt';
-    }
-  };
-
-  // Request camera and microphone permissions
-  const requestPermissions = async (): Promise<boolean> => {
-    setIsRequestingPermission(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      // Stop the tracks immediately - we just needed to request permission
-      stream.getTracks().forEach(track => track.stop());
-      setPermissionStatus('granted');
-      setIsRequestingPermission(false);
-      return true;
-    } catch (err: any) {
-      console.error('[Permissions] Error requesting permissions:', err);
-      setIsRequestingPermission(false);
-
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setPermissionStatus('denied');
-      } else if (err.name === 'NotFoundError') {
-        alert('No camera or microphone found. Please connect a camera and microphone to use video calling.');
-      } else {
-        alert('Could not access camera/microphone. Please check your device settings.');
-      }
-      return false;
-    }
-  };
-
-  // 1. Ring Doorbell -> Check permissions first, then start call
+  // 1. Ring Doorbell -> Show permission prompt first
   const ringDoorbell = async () => {
     if (!propertyId) {
       alert("Missing Property ID");
       return;
     }
 
-    // Check permissions first
-    const currentPermission = await checkPermissions();
-
-    if (currentPermission === 'denied') {
-      setPermissionStatus('denied');
-      return;
-    }
-
-    if (currentPermission === 'prompt') {
-      setPermissionStatus('prompt');
-      return;
-    }
-
-    // Permissions granted, proceed with call
-    await startCall();
+    // Show permission prompt UI first to explain what we need
+    setPermissionStatus('prompt');
   };
 
-  // Actually start the video call (after permissions granted)
+  // Actually start the video call (called after user clicks Allow Access)
   const startCall = async () => {
     try {
+      setDebugMessage('Starting call...');
+
       // A. Init WebRTC
+      setDebugMessage('Setting up video connection...');
       await init();
+
+      // B. Get media and add tracks (this triggers browser permission prompt)
+      setDebugMessage('Requesting camera & microphone...');
       await addLocalTracks();
 
-      // B. Create Offer
+      // C. Create Offer
+      setDebugMessage('Creating call request...');
       const offer = await pc.current?.createOffer();
-      if (!offer) throw new Error("Failed to create offer");
+      if (!offer) throw new Error("Failed to create offer - peer connection not ready");
       await pc.current?.setLocalDescription(offer);
 
-      // C. Update Database (No Recording, Just Scaling Call)
+      // D. Update Database
+      setDebugMessage('Connecting to property owner...');
       const docRef = await addDoc(collection(db, 'guestRequests'), {
         propertyId: propertyId,
         status: 'calling',
-        callOffer: offer,
+        callOffer: {
+          type: offer.type,
+          sdp: offer.sdp
+        },
         createdAt: serverTimestamp(),
         timestamp: new Date().toISOString()
       });
 
+      setDebugMessage('');
       setRequestId(docRef.id);
       setCallStatus('calling');
+      setPermissionStatus('granted');
       answerProcessed.current = false;
       processedCandidatesLocal.current.clear();
 
       // Set up call timeout (60 seconds)
       callTimeoutRef.current = setTimeout(() => {
         if (callStatus === 'calling') {
-          console.log('[Guest] Call timeout - no answer');
           setCallStatus('timeout');
           setStatus('timeout');
         }
       }, 60000);
     } catch (err: any) {
-      console.error("Failed to start call", err);
+      console.error("[Guest] Failed to start call:", err);
       setCallStatus('failed');
 
-      // Provide more specific error messages
-      if (err.name === 'NotAllowedError') {
+      // Provide specific error messages shown on screen
+      let errorMsg = '';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setPermissionStatus('denied');
-      } else if (err.name === 'NotFoundError') {
-        alert('No camera or microphone found. Please connect a camera and microphone.');
+        return; // Will show denied UI
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMsg = 'No camera or microphone found on this device.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errorMsg = 'Camera is in use by another app. Please close other apps and try again.';
+      } else if (err.name === 'OverconstrainedError') {
+        errorMsg = 'Camera does not support required settings.';
+      } else if (err.message?.includes('Firestore') || err.code === 'permission-denied') {
+        errorMsg = 'Cannot connect to server. Check your internet connection.';
+      } else if (err.name === 'TypeError' && err.message?.includes('getUserMedia')) {
+        errorMsg = 'Your browser does not support video calls. Please use Chrome or Safari.';
       } else {
-        alert('Could not start video call. Please try again.');
+        errorMsg = `Error: ${err.name || 'Unknown'} - ${err.message || 'Please try again'}`;
       }
+
+      setDebugMessage(errorMsg);
+      setPermissionStatus('unknown');
     }
   };
 
-  // Handle permission request from prompt UI
+  // Handle permission request from prompt UI - just start the call directly
+  // The browser will prompt for permissions when we call getUserMedia in addLocalTracks
   const handleRequestPermission = async () => {
-    const granted = await requestPermissions();
-    if (granted) {
-      // Permissions granted, start the call
-      await startCall();
-    }
+    setIsRequestingPermission(true);
+    await startCall();
+    setIsRequestingPermission(false);
   };
 
   // Cleanup timeout on unmount or call end
@@ -311,20 +270,38 @@ export default function WebGuestScreen() {
             <Text style={styles.permissionText}>
               To ring the doorbell and have a video call with the property owner, we need access to your camera and microphone.
             </Text>
+
+            {/* Status/Error Message */}
+            {debugMessage ? (
+              <View style={styles.debugMessageContainer}>
+                {!debugMessage.startsWith('Error') && !debugMessage.includes('found') && !debugMessage.includes('use') && !debugMessage.includes('support') && !debugMessage.includes('connect') ? (
+                  <ActivityIndicator size="small" color="#10b981" style={{ marginRight: 8 }} />
+                ) : null}
+                <Text style={[
+                  styles.debugMessageText,
+                  (debugMessage.startsWith('Error') || debugMessage.includes('found') || debugMessage.includes('use') || debugMessage.includes('support') || debugMessage.includes('connect'))
+                    && { color: '#ef4444' }
+                ]}>
+                  {debugMessage}
+                </Text>
+              </View>
+            ) : null}
+
             <TouchableOpacity
-              style={styles.permissionButton}
+              style={[styles.permissionButton, isRequestingPermission && { opacity: 0.7 }]}
               onPress={handleRequestPermission}
               disabled={isRequestingPermission}
             >
-              {isRequestingPermission ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.permissionButtonText}>Allow Access</Text>
-              )}
+              <Text style={styles.permissionButtonText}>
+                {isRequestingPermission ? 'Please wait...' : 'Allow Access & Call'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.permissionCancelButton}
-              onPress={() => setPermissionStatus('unknown')}
+              onPress={() => {
+                setPermissionStatus('unknown');
+                setDebugMessage('');
+              }}
             >
               <Text style={styles.permissionCancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -673,5 +650,22 @@ const styles = StyleSheet.create({
     color: '#71717a',
     fontSize: 14,
     fontWeight: '500'
+  },
+  debugMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    width: '100%'
+  },
+  debugMessageText: {
+    color: '#a1a1aa',
+    fontSize: 14,
+    textAlign: 'center',
+    flex: 1
   }
 });

@@ -22,54 +22,71 @@ export const useWebRTC = (isMobile: boolean) => {
     const processedCandidates = useRef<Set<string>>(new Set());
 
     const init = async () => {
-        const config = {
-            iceServers: [
-                { urls: 'stun:stun.relay.metered.ca:80' },
-                {
-                    urls: process.env.EXPO_PUBLIC_TURN_URL || 'turn:global.relay.metered.ca:80',
-                    username: process.env.EXPO_PUBLIC_TURN_USER,
-                    credential: process.env.EXPO_PUBLIC_TURN_PASS,
-                },
-                {
-                    urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-                    username: process.env.EXPO_PUBLIC_TURN_USER,
-                    credential: process.env.EXPO_PUBLIC_TURN_PASS,
-                },
-                {
-                    urls: 'turn:global.relay.metered.ca:443',
-                    username: process.env.EXPO_PUBLIC_TURN_USER,
-                    credential: process.env.EXPO_PUBLIC_TURN_PASS,
-                },
-                {
-                    urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-                    username: process.env.EXPO_PUBLIC_TURN_USER,
-                    credential: process.env.EXPO_PUBLIC_TURN_PASS,
-                },
-            ],
-        };
+        try {
+            console.log('[WebRTC] Initializing peer connection...');
 
-        if (Platform.OS === 'web') {
-            pc.current = new RTCPeerConnection(config);
-            pc.current.ontrack = (event: RTCTrackEvent) => {
-                setRemoteStream(event.streams[0]);
+            const config = {
+                iceServers: [
+                    { urls: 'stun:stun.relay.metered.ca:80' },
+                    {
+                        urls: process.env.EXPO_PUBLIC_TURN_URL || 'turn:global.relay.metered.ca:80',
+                        username: process.env.EXPO_PUBLIC_TURN_USER,
+                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                    },
+                    {
+                        urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+                        username: process.env.EXPO_PUBLIC_TURN_USER,
+                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                    },
+                    {
+                        urls: 'turn:global.relay.metered.ca:443',
+                        username: process.env.EXPO_PUBLIC_TURN_USER,
+                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                    },
+                    {
+                        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+                        username: process.env.EXPO_PUBLIC_TURN_USER,
+                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                    },
+                ],
             };
-        } else {
-            pc.current = new RTCPeerConnectionNative(config);
-            pc.current.onaddstream = (event: any) => {
-                setRemoteStream(event.stream);
+
+            if (Platform.OS === 'web') {
+                console.log('[WebRTC] Creating RTCPeerConnection for web...');
+                pc.current = new RTCPeerConnection(config);
+                pc.current.ontrack = (event: RTCTrackEvent) => {
+                    console.log('[WebRTC] Received remote track');
+                    setRemoteStream(event.streams[0]);
+                };
+            } else {
+                console.log('[WebRTC] Creating RTCPeerConnection for native...');
+                pc.current = new RTCPeerConnectionNative(config);
+                pc.current.onaddstream = (event: any) => {
+                    console.log('[WebRTC] Received remote stream');
+                    setRemoteStream(event.stream);
+                };
+            }
+
+            // Add connection state monitoring
+            pc.current.onconnectionstatechange = () => {
+                const state = pc.current?.connectionState || 'new';
+                console.log('[WebRTC] Connection state:', state);
+                setConnectionState(state);
             };
+
+            pc.current.oniceconnectionstatechange = () => {
+                console.log('[WebRTC] ICE connection state:', pc.current?.iceConnectionState);
+            };
+
+            pc.current.onicegatheringstatechange = () => {
+                console.log('[WebRTC] ICE gathering state:', pc.current?.iceGatheringState);
+            };
+
+            console.log('[WebRTC] Peer connection initialized successfully');
+        } catch (err) {
+            console.error('[WebRTC] Error initializing peer connection:', err);
+            throw err;
         }
-
-        // Add connection state monitoring
-        pc.current.onconnectionstatechange = () => {
-            const state = pc.current?.connectionState || 'new';
-            console.log('[WebRTC] Connection state:', state);
-            setConnectionState(state);
-        };
-
-        pc.current.oniceconnectionstatechange = () => {
-            console.log('[WebRTC] ICE connection state:', pc.current?.iceConnectionState);
-        };
     };
 
     const addLocalTracks = async () => {
@@ -78,15 +95,25 @@ export const useWebRTC = (isMobile: boolean) => {
 
         try {
             if (Platform.OS === 'web') {
+                console.log('[WebRTC] Requesting getUserMedia on web...');
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
-                stream.getTracks().forEach((track) => pc.current?.addTrack(track, stream));
+                console.log('[WebRTC] Got media stream, adding tracks...');
+                stream.getTracks().forEach((track) => {
+                    console.log('[WebRTC] Adding track:', track.kind);
+                    pc.current?.addTrack(track, stream);
+                });
             } else {
+                console.log('[WebRTC] Requesting getUserMedia on native...');
                 stream = await mediaDevicesNative.getUserMedia(constraints);
+                console.log('[WebRTC] Got media stream, adding to peer connection...');
                 pc.current?.addStream(stream);
             }
             setLocalStream(stream);
+            console.log('[WebRTC] Local stream set successfully');
         } catch (err) {
-            console.error('Error adding local tracks:', err);
+            console.error('[WebRTC] Error adding local tracks:', err);
+            // Re-throw so caller can handle the error
+            throw err;
         }
     };
 
