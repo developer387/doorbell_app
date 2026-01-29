@@ -54,18 +54,18 @@ export const useWebRTC = (isMobile: boolean) => {
             if (Platform.OS === 'web') {
                 console.log('[WebRTC] Creating RTCPeerConnection for web...');
                 pc.current = new RTCPeerConnection(config);
-                pc.current.ontrack = (event: RTCTrackEvent) => {
-                    console.log('[WebRTC] Received remote track');
-                    setRemoteStream(event.streams[0]);
-                };
             } else {
                 console.log('[WebRTC] Creating RTCPeerConnection for native...');
                 pc.current = new RTCPeerConnectionNative(config);
-                pc.current.onaddstream = (event: any) => {
-                    console.log('[WebRTC] Received remote stream');
-                    setRemoteStream(event.stream);
-                };
             }
+
+            // Use ontrack for both web and native (modern API)
+            pc.current.ontrack = (event: any) => {
+                console.log('[WebRTC] Received remote track:', event.track?.kind);
+                if (event.streams && event.streams[0]) {
+                    setRemoteStream(event.streams[0]);
+                }
+            };
 
             // Add connection state monitoring
             pc.current.onconnectionstatechange = () => {
@@ -97,17 +97,17 @@ export const useWebRTC = (isMobile: boolean) => {
             if (Platform.OS === 'web') {
                 console.log('[WebRTC] Requesting getUserMedia on web...');
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
-                console.log('[WebRTC] Got media stream, adding tracks...');
-                stream.getTracks().forEach((track) => {
-                    console.log('[WebRTC] Adding track:', track.kind);
-                    pc.current?.addTrack(track, stream);
-                });
             } else {
                 console.log('[WebRTC] Requesting getUserMedia on native...');
                 stream = await mediaDevicesNative.getUserMedia(constraints);
-                console.log('[WebRTC] Got media stream, adding to peer connection...');
-                pc.current?.addStream(stream);
             }
+
+            console.log('[WebRTC] Got media stream, adding tracks...');
+            stream.getTracks().forEach((track: any) => {
+                console.log('[WebRTC] Adding track:', track.kind);
+                pc.current?.addTrack(track, stream);
+            });
+
             setLocalStream(stream);
             console.log('[WebRTC] Local stream set successfully');
         } catch (err) {

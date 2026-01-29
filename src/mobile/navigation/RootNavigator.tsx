@@ -5,6 +5,7 @@ import { AuthNavigator } from './AuthNavigator';
 import { MainNavigator } from './MainNavigator';
 import { useUser } from '@/context/UserContext';
 import { COLORS } from '@/constants/theme';
+import { navigationRef } from './navigationRef';
 
 export const RootNavigator: React.FC = () => {
     const { isLoggedIn, isLoading } = useUser();
@@ -18,7 +19,7 @@ export const RootNavigator: React.FC = () => {
     }
 
     return (
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
             {isLoggedIn ? <MainNavigator /> : <AuthNavigator />}
         </NavigationContainer>
     );

@@ -171,7 +171,7 @@ export const PropertyDetails = () => {
         />
       )}
 
-      {activeChip === 'request' && <RequestsTab property={property} />}
+      {activeChip === 'request' && <RequestsTab propertyId={propertyId} />}
 
       <PinSheet
         isVisible={activeSheet === 'pin'}
