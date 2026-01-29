@@ -5,7 +5,7 @@ export interface GuestRequest {
     propertyId?: string; // Keep for compatibility
     propertyName?: string;
     videoUrl?: string; // Public URL of the 5‑sec clip
-    status: 'pending' | 'viewed' | 'calling' | 'ended' | 'accepted' | 'declined';
+    status: 'pending' | 'viewed' | 'calling' | 'ended' | 'accepted' | 'declined' | 'missed' | 'timeout';
     createdAt?: any; // Firestore Timestamp
 
     // Signaling fields

@@ -19,6 +19,12 @@ export default function WebGuestScreen() {
   const [requestId, setRequestId] = useState<string>('');
   const [showPinInput, setShowPinInput] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'failed' | 'timeout'>('idle');
+
+  // Refs for tracking state
+  const answerProcessed = useRef(false);
+  const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const processedCandidatesLocal = useRef<Set<string>>(new Set());
 
   // Animation for the ring button ripple effect
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -42,9 +48,9 @@ export default function WebGuestScreen() {
   }, []);
 
   // Hooks for Signaling and WebRTC
-  const { request, addIceCandidate } = useGuestRequest(requestId);
+  const { request, addIceCandidate, setStatus } = useGuestRequest(requestId);
   // Only init WebRTC if on mobile/web appropriately
-  const { pc, init, addLocalTracks, remoteStream, localStream, createIceCandidate } = useWebRTC(Platform.OS !== 'web');
+  const { pc, init, addLocalTracks, remoteStream, localStream, connectionState, addRemoteIceCandidate } = useWebRTC(Platform.OS !== 'web');
 
   useEffect(() => {
     if (!propertyId) {
@@ -79,11 +85,33 @@ export default function WebGuestScreen() {
       });
 
       setRequestId(docRef.id);
+      setCallStatus('calling');
+      answerProcessed.current = false;
+      processedCandidatesLocal.current.clear();
+
+      // Set up call timeout (60 seconds)
+      callTimeoutRef.current = setTimeout(() => {
+        if (callStatus === 'calling') {
+          console.log('[Guest] Call timeout - no answer');
+          setCallStatus('timeout');
+          setStatus('timeout');
+        }
+      }, 60000);
     } catch (err) {
       console.error("Failed to ring doorbell", err);
+      setCallStatus('failed');
       alert("Could not start video call. Please check permissions.");
     }
   };
+
+  // Cleanup timeout on unmount or call end
+  useEffect(() => {
+    return () => {
+      if (callTimeoutRef.current) {
+        clearTimeout(callTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handlePinSubmit = async (pin: string) => {
     setIsVerifyingPin(true);
@@ -94,45 +122,71 @@ export default function WebGuestScreen() {
     }, 1000);
   };
 
-  // 2. Handle Answer from Owner
+  // 2. Handle Answer from Owner (with race condition prevention)
   useEffect(() => {
-    if (request?.status === 'calling' && request.callAnswer && !pc.current?.remoteDescription) {
+    if (request?.status === 'calling' && request.callAnswer && !answerProcessed.current) {
       handleCallAnswer(request.callAnswer);
     }
-  }, [request]);
+  }, [request?.callAnswer]);
 
   const handleCallAnswer = async (answer: RTCSessionDescriptionInit) => {
+    if (answerProcessed.current) {
+      console.log('[Guest] Answer already processed, skipping');
+      return;
+    }
+
     try {
+      console.log('[Guest] Processing call answer');
+      answerProcessed.current = true;
       await pc.current?.setRemoteDescription(answer);
+
+      // Clear timeout since call was answered
+      if (callTimeoutRef.current) {
+        clearTimeout(callTimeoutRef.current);
+        callTimeoutRef.current = null;
+      }
     } catch (e) {
       console.error("Error setting remote description", e);
+      answerProcessed.current = false; // Allow retry on error
     }
   };
 
-  // 3. Handle ICE Candidates
+  // 2b. Update call status based on connection state
+  useEffect(() => {
+    if (connectionState === 'connected') {
+      setCallStatus('connected');
+    } else if (connectionState === 'failed' || connectionState === 'disconnected') {
+      setCallStatus('failed');
+    }
+  }, [connectionState]);
+
+  // 3. Send local ICE candidates to Firestore
   useEffect(() => {
     if (!pc.current || !requestId) return;
 
-    // Send local candidates to Firestore
     const onIce = (e: any) => {
       if (e.candidate) {
+        console.log('[Guest] Sending ICE candidate');
         addIceCandidate(e.candidate.toJSON(), 'guest');
       }
     };
     pc.current.onicecandidate = onIce;
+  }, [pc.current, requestId, addIceCandidate]);
 
-    // Receive remote candidates from Firestore
-    if (request?.iceCandidates) {
-      request.iceCandidates.forEach((c) => {
-        if (c.from === 'owner') {
-          try {
-            const candidate = createIceCandidate(c.candidate);
-            pc.current?.addIceCandidate(candidate);
-          } catch (e) { console.warn("Candidate error", e); }
+  // 3b. Receive remote ICE candidates (separate effect with deduplication)
+  useEffect(() => {
+    if (!pc.current || !request?.iceCandidates) return;
+
+    request.iceCandidates.forEach((c) => {
+      if (c.from === 'owner') {
+        const candidateId = JSON.stringify(c.candidate);
+        if (!processedCandidatesLocal.current.has(candidateId)) {
+          processedCandidatesLocal.current.add(candidateId);
+          addRemoteIceCandidate(c.candidate);
         }
-      });
-    }
-  }, [pc.current, request?.iceCandidates, requestId]);
+      }
+    });
+  }, [request?.iceCandidates, addRemoteIceCandidate]);
 
   if (showPinInput) {
     return (
@@ -187,47 +241,85 @@ export default function WebGuestScreen() {
         </View>
       )}
 
-      {/* State: Calling / Connected */}
+      {/* State: Calling / Connected / Failed / Timeout */}
       {requestId && (
         <View style={styles.statusContainer}>
-          <Text style={styles.statusText}>
-            {request?.status === 'calling' ? 'Calling Owner...' : 'Connected'}
-          </Text>
-
-          <View style={styles.videoGrid}>
-            {/* Remote Video (Owner) */}
-            <View style={styles.remoteVideo}>
-              {remoteStream ? (
-                Platform.OS === 'web' ? (
-                  <video
-                    ref={v => { if (v) v.srcObject = remoteStream }}
-                    autoPlay
-                    playsInline
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                ) : <Text style={{ color: '#fff' }}>Mobile Video View</Text>
-              ) : (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator size="large" color="#fff" />
-                  <Text style={{ color: '#ccc', marginTop: 10 }}>Waiting for owner...</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Local Video (Self View) */}
-            <View style={styles.localVideo}>
-              {localStream && (
-                Platform.OS === 'web' ? (
-                  <video
-                    ref={v => { if (v) { v.srcObject = localStream; v.muted = true; } }}
-                    autoPlay
-                    playsInline
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : <Text style={{ color: '#fff' }}>Local</Text>
-              )}
-            </View>
+          {/* Status display with connection state */}
+          <View style={styles.statusHeader}>
+            <Text style={[
+              styles.statusText,
+              callStatus === 'connected' && { color: '#4ade80' },
+              callStatus === 'failed' && { color: '#ef4444' },
+              callStatus === 'timeout' && { color: '#f59e0b' }
+            ]}>
+              {callStatus === 'calling' && 'Calling Owner...'}
+              {callStatus === 'connected' && 'Connected'}
+              {callStatus === 'failed' && 'Connection Failed'}
+              {callStatus === 'timeout' && 'No Answer'}
+            </Text>
+            {callStatus === 'calling' && (
+              <Text style={styles.connectionStateText}>
+                {connectionState === 'connecting' ? 'Establishing connection...' : ''}
+              </Text>
+            )}
           </View>
+
+          {/* Timeout/Failed state - show retry option */}
+          {(callStatus === 'timeout' || callStatus === 'failed') && (
+            <View style={styles.retryContainer}>
+              <Text style={styles.retryText}>
+                {callStatus === 'timeout' ? 'The owner didn\'t answer.' : 'The connection failed.'}
+              </Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => {
+                  setRequestId('');
+                  setCallStatus('idle');
+                  answerProcessed.current = false;
+                }}
+              >
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Video grid - only show when not timeout/failed */}
+          {callStatus !== 'timeout' && callStatus !== 'failed' && (
+            <View style={styles.videoGrid}>
+              {/* Remote Video (Owner) */}
+              <View style={styles.remoteVideo}>
+                {remoteStream ? (
+                  Platform.OS === 'web' ? (
+                    <video
+                      ref={v => { if (v) v.srcObject = remoteStream }}
+                      autoPlay
+                      playsInline
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  ) : <Text style={{ color: '#fff' }}>Mobile Video View</Text>
+                ) : (
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator size="large" color="#fff" />
+                    <Text style={{ color: '#ccc', marginTop: 10 }}>Waiting for owner...</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Local Video (Self View) */}
+              <View style={styles.localVideo}>
+                {localStream && (
+                  Platform.OS === 'web' ? (
+                    <video
+                      ref={v => { if (v) { v.srcObject = localStream; v.muted = true; } }}
+                      autoPlay
+                      playsInline
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : <Text style={{ color: '#fff' }}>Local</Text>
+                )}
+              </View>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -334,8 +426,14 @@ const styles = StyleSheet.create({
 
   // Calling States
   statusContainer: { alignItems: 'center', width: '100%', flex: 1, padding: 20 },
-  statusText: { color: '#4ade80', fontSize: 20, marginBottom: 20, fontWeight: 'bold' },
+  statusHeader: { alignItems: 'center', marginBottom: 20 },
+  statusText: { color: '#4ade80', fontSize: 20, fontWeight: 'bold' },
+  connectionStateText: { color: '#888', fontSize: 14, marginTop: 5 },
   videoGrid: { flexDirection: 'column', width: '100%', height: '80%', position: 'relative', borderRadius: 20, overflow: 'hidden', backgroundColor: '#000' },
   remoteVideo: { flex: 1, backgroundColor: '#000' },
-  localVideo: { position: 'absolute', bottom: 20, right: 20, width: 120, height: 180, backgroundColor: '#333', borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' }
+  localVideo: { position: 'absolute', bottom: 20, right: 20, width: 120, height: 180, backgroundColor: '#333', borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' },
+  retryContainer: { alignItems: 'center', padding: 40 },
+  retryText: { color: '#a1a1aa', fontSize: 16, marginBottom: 20, textAlign: 'center' },
+  retryButton: { backgroundColor: '#10b981', paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12 },
+  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

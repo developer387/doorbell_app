@@ -6,16 +6,55 @@ type Props = {
     visible: boolean;
     requestId: string;
     pc: any; // RTCPeerConnection
-    remoteStream: any; // MediaStream 
+    remoteStream: any; // MediaStream
     localStream: any; // MediaStream
+    connectionState?: string;
     onClose: () => void;
 };
 
-export const CallModal = ({ visible, requestId, pc, remoteStream, localStream, onClose }: Props) => {
+const getConnectionStatusText = (state?: string) => {
+    switch (state) {
+        case 'connected':
+            return 'Connected';
+        case 'connecting':
+            return 'Connecting...';
+        case 'disconnected':
+            return 'Disconnected';
+        case 'failed':
+            return 'Connection Failed';
+        case 'closed':
+            return 'Call Ended';
+        default:
+            return 'Connecting...';
+    }
+};
+
+const getConnectionStatusColor = (state?: string) => {
+    switch (state) {
+        case 'connected':
+            return '#4ade80'; // green
+        case 'connecting':
+        case 'new':
+            return '#fbbf24'; // yellow
+        case 'disconnected':
+        case 'failed':
+            return '#ef4444'; // red
+        default:
+            return '#fbbf24';
+    }
+};
+
+export const CallModal = ({ visible, requestId: _requestId, pc: _pc, remoteStream, localStream, connectionState, onClose }: Props) => {
     return (
         <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={onClose}>
             <View style={styles.backdrop}>
                 <View style={styles.container}>
+                    {/* Connection state indicator */}
+                    <View style={styles.statusBar}>
+                        <View style={[styles.statusDot, { backgroundColor: getConnectionStatusColor(connectionState) }]} />
+                        <Text style={styles.statusText}>{getConnectionStatusText(connectionState)}</Text>
+                    </View>
+
                     {/* Remote video – fills most of the screen */}
                     {remoteStream ? (
                         <RTCView
@@ -62,6 +101,29 @@ const styles = StyleSheet.create({
         backgroundColor: '#000',
         overflow: 'hidden',
         position: 'relative',
+    },
+    statusBar: {
+        position: 'absolute',
+        top: 60,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    statusDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 8,
+    },
+    statusText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
     },
     remote: { flex: 1, width: '100%', height: '100%' },
     local: {

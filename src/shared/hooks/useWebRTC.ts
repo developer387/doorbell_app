@@ -18,6 +18,8 @@ export const useWebRTC = (isMobile: boolean) => {
     const pc = useRef<any | null>(null);
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+    const [connectionState, setConnectionState] = useState<string>('new');
+    const processedCandidates = useRef<Set<string>>(new Set());
 
     const init = async () => {
         const config = {
@@ -57,6 +59,17 @@ export const useWebRTC = (isMobile: boolean) => {
                 setRemoteStream(event.stream);
             };
         }
+
+        // Add connection state monitoring
+        pc.current.onconnectionstatechange = () => {
+            const state = pc.current?.connectionState || 'new';
+            console.log('[WebRTC] Connection state:', state);
+            setConnectionState(state);
+        };
+
+        pc.current.oniceconnectionstatechange = () => {
+            console.log('[WebRTC] ICE connection state:', pc.current?.iceConnectionState);
+        };
     };
 
     const addLocalTracks = async () => {
@@ -84,6 +97,33 @@ export const useWebRTC = (isMobile: boolean) => {
         }
         setLocalStream(null);
         setRemoteStream(null);
+        setConnectionState('new');
+        processedCandidates.current.clear();
+    };
+
+    // Add remote ICE candidate with deduplication
+    const addRemoteIceCandidate = async (candidateData: RTCIceCandidateInit) => {
+        if (!pc.current) {
+            console.warn('[WebRTC] Cannot add ICE candidate: no peer connection');
+            return false;
+        }
+
+        const candidateId = JSON.stringify(candidateData);
+        if (processedCandidates.current.has(candidateId)) {
+            console.log('[WebRTC] Skipping duplicate ICE candidate');
+            return false;
+        }
+
+        try {
+            const candidate = createIceCandidate(candidateData);
+            await pc.current.addIceCandidate(candidate);
+            processedCandidates.current.add(candidateId);
+            console.log('[WebRTC] Added ICE candidate successfully');
+            return true;
+        } catch (e) {
+            console.warn('[WebRTC] Error adding ICE candidate:', e);
+            return false;
+        }
     };
 
     // Helper to ensure we use the correct class for candidates/descriptions
@@ -111,6 +151,8 @@ export const useWebRTC = (isMobile: boolean) => {
         localStream,
         close,
         createIceCandidate,
-        createSessionDescription
+        createSessionDescription,
+        connectionState,
+        addRemoteIceCandidate
     };
 };

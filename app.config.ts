@@ -54,6 +54,22 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
                 cameraPermission: "Allow $(PRODUCT_NAME) to access your camera",
                 microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone"
             }
+        ],
+        [
+            "expo-notifications",
+            {
+                icon: "./assets/icon.png",
+                color: "#007AFF",
+                sounds: [],
+                android: {
+                    channelId: "doorbell-calls",
+                    channelName: "Doorbell Calls",
+                    channelDescription: "Notifications for incoming doorbell calls",
+                    importance: 5,
+                    vibrate: true,
+                    sound: true
+                }
+            }
         ]
     ],
     extra: {

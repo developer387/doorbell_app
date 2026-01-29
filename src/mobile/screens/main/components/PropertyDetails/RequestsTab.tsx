@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, FlatList } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Circle } from 'lucide-react-native';
@@ -32,10 +32,11 @@ const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
 
 export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
   const { requests, setStatus, setCallAnswer, addIceCandidate } = useOwnerRequests(propertyId);
-  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, createIceCandidate } = useWebRTC(true);
+  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState } = useWebRTC(true);
 
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const processedCandidatesLocal = useRef<Set<string>>(new Set());
 
   // ANSWER CALL LOGIC
   const answerCall = async (req: any) => {
@@ -75,26 +76,27 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
   useEffect(() => {
     if (!activeCallId) return;
 
-    // Listen only for ICE candidates updates from Guest here? 
-    // Actually, Guest sends ICE candidates to the doc. We need to watch the doc.
+    // Clear processed candidates for new call
+    processedCandidatesLocal.current.clear();
+
     const unsub = onSnapshot(doc(db, 'guestRequests', activeCallId), async (snap) => {
       const data = snap.data();
       if (!data) return;
 
-      // We don't need to listen for Answer anymore (we create it).
-      // We listen for Remote ICE candidates (from Guest)
+      // Listen for Remote ICE candidates (from Guest) with deduplication
       if (data.iceCandidates) {
         data.iceCandidates.forEach((c: any) => {
           if (c.from === 'guest') {
-            try {
-              const candidate = createIceCandidate(c.candidate);
-              pc.current?.addIceCandidate(candidate);
-            } catch (e) { }
+            const candidateId = JSON.stringify(c.candidate);
+            if (!processedCandidatesLocal.current.has(candidateId)) {
+              processedCandidatesLocal.current.add(candidateId);
+              addRemoteIceCandidate(c.candidate);
+            }
           }
         });
       }
 
-      // Auto-close if status becomes 'ended' externally?
+      // Auto-close if status becomes 'ended' externally
       if (data.status === 'ended') {
         close();
         setActiveCallId(null);
@@ -102,7 +104,7 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
     });
 
     return () => unsub();
-  }, [activeCallId]);
+  }, [activeCallId, addRemoteIceCandidate, close]);
 
   // SEND ICE (Owner Candidates -> Guest)
   useEffect(() => {
@@ -181,6 +183,7 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
           pc={pc.current}
           remoteStream={remoteStream}
           localStream={localStream}
+          connectionState={connectionState}
           onClose={() => {
             close();
             setActiveCallId(null);
