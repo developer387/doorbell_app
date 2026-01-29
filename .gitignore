@@ -23,12 +23,15 @@ expo-env.d.ts
 .env*.local
 !.env.example
 
-# Firebase (SENSITIVE - contains API keys)
+# Firebase (SENSITIVE - contains API keys and credentials)
 google-services.json
 GoogleService-Info.plist
 firebase-debug.log
 firebase-debug.*.log
 .firebaserc
+*-firebase-adminsdk-*.json
+serviceAccountKey.json
+*serviceAccount*.json
 
 # Firebase Functions
 functions/lib/

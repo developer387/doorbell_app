@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Animated } from 'react-native';
 import { useGuestRequest } from '../../shared/hooks/useGuestRequest';
 import { useWebRTC } from '../../shared/hooks/useWebRTC';
 import { db } from '../../shared/config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
 import { PinInput } from '../components/guest/PinInput';
-import { Bell, House } from 'lucide-react-native';
+import { Bell, House, Camera, Mic } from 'lucide-react-native';
 
 export default function WebGuestScreen() {
   const route = useRoute<any>();
@@ -20,6 +20,8 @@ export default function WebGuestScreen() {
   const [showPinInput, setShowPinInput] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'failed' | 'timeout'>('idle');
+  const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>('unknown');
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
 
   // Refs for tracking state
   const answerProcessed = useRef(false);
@@ -58,13 +60,85 @@ export default function WebGuestScreen() {
     }
   }, [propertyId]);
 
-  // 1. Ring Doorbell -> Immediately Start Call Flow
+  // Check if camera/mic permissions are available
+  const checkPermissions = async (): Promise<'granted' | 'denied' | 'prompt'> => {
+    if (Platform.OS !== 'web') return 'granted';
+
+    try {
+      // Try to query permission status (not all browsers support this)
+      if (navigator.permissions && navigator.permissions.query) {
+        const [cameraResult, micResult] = await Promise.all([
+          navigator.permissions.query({ name: 'camera' as PermissionName }),
+          navigator.permissions.query({ name: 'microphone' as PermissionName })
+        ]);
+
+        if (cameraResult.state === 'denied' || micResult.state === 'denied') {
+          return 'denied';
+        }
+        if (cameraResult.state === 'granted' && micResult.state === 'granted') {
+          return 'granted';
+        }
+        return 'prompt';
+      }
+      // If permissions API not supported, assume we need to prompt
+      return 'prompt';
+    } catch (e) {
+      console.log('[Permissions] Query not supported, will prompt');
+      return 'prompt';
+    }
+  };
+
+  // Request camera and microphone permissions
+  const requestPermissions = async (): Promise<boolean> => {
+    setIsRequestingPermission(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // Stop the tracks immediately - we just needed to request permission
+      stream.getTracks().forEach(track => track.stop());
+      setPermissionStatus('granted');
+      setIsRequestingPermission(false);
+      return true;
+    } catch (err: any) {
+      console.error('[Permissions] Error requesting permissions:', err);
+      setIsRequestingPermission(false);
+
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setPermissionStatus('denied');
+      } else if (err.name === 'NotFoundError') {
+        alert('No camera or microphone found. Please connect a camera and microphone to use video calling.');
+      } else {
+        alert('Could not access camera/microphone. Please check your device settings.');
+      }
+      return false;
+    }
+  };
+
+  // 1. Ring Doorbell -> Check permissions first, then start call
   const ringDoorbell = async () => {
     if (!propertyId) {
       alert("Missing Property ID");
       return;
     }
 
+    // Check permissions first
+    const currentPermission = await checkPermissions();
+
+    if (currentPermission === 'denied') {
+      setPermissionStatus('denied');
+      return;
+    }
+
+    if (currentPermission === 'prompt') {
+      setPermissionStatus('prompt');
+      return;
+    }
+
+    // Permissions granted, proceed with call
+    await startCall();
+  };
+
+  // Actually start the video call (after permissions granted)
+  const startCall = async () => {
     try {
       // A. Init WebRTC
       await init();
@@ -97,10 +171,27 @@ export default function WebGuestScreen() {
           setStatus('timeout');
         }
       }, 60000);
-    } catch (err) {
-      console.error("Failed to ring doorbell", err);
+    } catch (err: any) {
+      console.error("Failed to start call", err);
       setCallStatus('failed');
-      alert("Could not start video call. Please check permissions.");
+
+      // Provide more specific error messages
+      if (err.name === 'NotAllowedError') {
+        setPermissionStatus('denied');
+      } else if (err.name === 'NotFoundError') {
+        alert('No camera or microphone found. Please connect a camera and microphone.');
+      } else {
+        alert('Could not start video call. Please try again.');
+      }
+    }
+  };
+
+  // Handle permission request from prompt UI
+  const handleRequestPermission = async () => {
+    const granted = await requestPermissions();
+    if (granted) {
+      // Permissions granted, start the call
+      await startCall();
     }
   };
 
@@ -204,8 +295,80 @@ export default function WebGuestScreen() {
 
   return (
     <View style={styles.container}>
+      {/* State: Permission Prompt */}
+      {permissionStatus === 'prompt' && !requestId && (
+        <View style={styles.contentWrapper}>
+          <View style={styles.permissionCard}>
+            <View style={styles.permissionIconRow}>
+              <View style={styles.permissionIcon}>
+                <Camera size={32} color="#10b981" />
+              </View>
+              <View style={styles.permissionIcon}>
+                <Mic size={32} color="#10b981" />
+              </View>
+            </View>
+            <Text style={styles.permissionTitle}>Camera & Microphone Access</Text>
+            <Text style={styles.permissionText}>
+              To ring the doorbell and have a video call with the property owner, we need access to your camera and microphone.
+            </Text>
+            <TouchableOpacity
+              style={styles.permissionButton}
+              onPress={handleRequestPermission}
+              disabled={isRequestingPermission}
+            >
+              {isRequestingPermission ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.permissionButtonText}>Allow Access</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.permissionCancelButton}
+              onPress={() => setPermissionStatus('unknown')}
+            >
+              <Text style={styles.permissionCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* State: Permission Denied */}
+      {permissionStatus === 'denied' && !requestId && (
+        <View style={styles.contentWrapper}>
+          <View style={styles.permissionCard}>
+            <View style={[styles.permissionIconRow, { marginBottom: 16 }]}>
+              <View style={[styles.permissionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' }]}>
+                <Camera size={32} color="#ef4444" />
+              </View>
+            </View>
+            <Text style={styles.permissionTitle}>Permission Required</Text>
+            <Text style={styles.permissionText}>
+              Camera and microphone access was denied. To use the video doorbell, please enable permissions in your browser settings:
+            </Text>
+            <View style={styles.permissionSteps}>
+              <Text style={styles.permissionStep}>1. Click the lock/info icon in your browser's address bar</Text>
+              <Text style={styles.permissionStep}>2. Find Camera and Microphone permissions</Text>
+              <Text style={styles.permissionStep}>3. Change both to "Allow"</Text>
+              <Text style={styles.permissionStep}>4. Refresh this page</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.permissionButton}
+              onPress={() => window.location.reload()}
+            >
+              <Text style={styles.permissionButtonText}>Refresh Page</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.permissionCancelButton}
+              onPress={() => setPermissionStatus('unknown')}
+            >
+              <Text style={styles.permissionCancelText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* State: Idle (Not Ringing) */}
-      {!requestId && (
+      {!requestId && permissionStatus !== 'prompt' && permissionStatus !== 'denied' && (
         <View style={styles.contentWrapper}>
 
           {/* 1. House Icon / Avatar */}
@@ -435,5 +598,80 @@ const styles = StyleSheet.create({
   retryContainer: { alignItems: 'center', padding: 40 },
   retryText: { color: '#a1a1aa', fontSize: 16, marginBottom: 20, textAlign: 'center' },
   retryButton: { backgroundColor: '#10b981', paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12 },
-  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
+  // Permission UI
+  permissionCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    maxWidth: 360,
+    width: '100%'
+  },
+  permissionIconRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 24
+  },
+  permissionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.2)'
+  },
+  permissionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+    textAlign: 'center'
+  },
+  permissionText: {
+    fontSize: 15,
+    color: '#a1a1aa',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24
+  },
+  permissionSteps: {
+    alignSelf: 'stretch',
+    marginBottom: 24,
+    paddingHorizontal: 8
+  },
+  permissionStep: {
+    fontSize: 14,
+    color: '#a1a1aa',
+    marginBottom: 8,
+    lineHeight: 20
+  },
+  permissionButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  permissionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  permissionCancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24
+  },
+  permissionCancelText: {
+    color: '#71717a',
+    fontSize: 14,
+    fontWeight: '500'
+  }
 });
