@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, View, TouchableOpacity, Text, StyleSheet, ScrollView } from 'react-native';
 import { RTCView } from 'react-native-webrtc';
-import { X, Lock, Check, Send } from 'lucide-react-native';
+import { X, Lock, Check, Send, Mic, MicOff, SwitchCamera } from 'lucide-react-native';
 import { SharedLock } from '@/types/GuestRequest';
 
 type SmartLock = {
@@ -18,8 +18,12 @@ type Props = {
     localStream: any;
     connectionState?: string;
     smartLocks?: SmartLock[];
+    isMuted?: boolean;
+    isFrontCamera?: boolean;
     onClose: () => void;
     onShareLocks?: (locks: SharedLock[]) => void;
+    onToggleMute?: () => void;
+    onFlipCamera?: () => void;
 };
 
 const getConnectionStatusText = (state?: string) => {
@@ -52,8 +56,12 @@ export const CallModal = ({
     localStream,
     connectionState,
     smartLocks = [],
+    isMuted = false,
+    isFrontCamera = true,
     onClose,
     onShareLocks,
+    onToggleMute,
+    onFlipCamera,
 }: Props) => {
     const [showLockSelector, setShowLockSelector] = useState(false);
     const [selectedLocks, setSelectedLocks] = useState<Set<string>>(new Set());
@@ -115,19 +123,35 @@ export const CallModal = ({
                             style={styles.local}
                             objectFit="cover"
                             zOrder={1}
+                            mirror={isFrontCamera}
                         />
                     )}
 
+                    {/* Top Controls - Camera Flip */}
+                    <View style={styles.topControls}>
+                        <TouchableOpacity style={styles.controlButton} onPress={onFlipCamera}>
+                            <SwitchCamera size={22} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+
                     {/* Bottom Controls */}
                     <View style={styles.controlsContainer}>
+                        {/* Mute Button */}
+                        <TouchableOpacity
+                            style={[styles.controlButtonLarge, isMuted && styles.controlButtonMuted]}
+                            onPress={onToggleMute}
+                        >
+                            {isMuted ? <MicOff size={24} color="#fff" /> : <Mic size={24} color="#fff" />}
+                        </TouchableOpacity>
+
                         {/* Share Locks Button */}
                         {smartLocks.length > 0 && !locksShared && (
                             <TouchableOpacity
                                 style={styles.shareLockButton}
                                 onPress={() => setShowLockSelector(true)}
                             >
-                                <Lock size={20} color="#fff" />
-                                <Text style={styles.shareLockText}>Share Lock Access</Text>
+                                <Lock size={18} color="#fff" />
+                                <Text style={styles.shareLockText}>Share Locks</Text>
                             </TouchableOpacity>
                         )}
 
@@ -136,14 +160,14 @@ export const CallModal = ({
                             <View style={styles.locksSharedBadge}>
                                 <Check size={16} color="#10b981" />
                                 <Text style={styles.locksSharedText}>
-                                    {selectedLocks.size} lock{selectedLocks.size > 1 ? 's' : ''} shared
+                                    {selectedLocks.size} shared
                                 </Text>
                             </View>
                         )}
 
                         {/* Hang-up button */}
                         <TouchableOpacity style={styles.hangup} onPress={onClose}>
-                            <Text style={styles.hangupText}>End Call</Text>
+                            <Text style={styles.hangupText}>End</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -276,35 +300,62 @@ const styles = StyleSheet.create({
         borderColor: '#fff',
         borderRadius: 12,
     },
+    topControls: {
+        position: 'absolute',
+        top: 100,
+        left: 20,
+        flexDirection: 'row',
+    },
+    controlButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     controlsContainer: {
         position: 'absolute',
         bottom: 50,
         left: 20,
         right: 20,
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: 16,
+        justifyContent: 'center',
+        gap: 12,
+    },
+    controlButtonLarge: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    controlButtonMuted: {
+        backgroundColor: '#ef4444',
     },
     shareLockButton: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#10b981',
-        paddingVertical: 14,
-        paddingHorizontal: 24,
-        borderRadius: 30,
-        gap: 10,
+        paddingVertical: 16,
+        paddingHorizontal: 20,
+        borderRadius: 28,
+        gap: 8,
     },
     shareLockText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '600',
     },
     locksSharedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(16, 185, 129, 0.2)',
-        paddingVertical: 10,
+        paddingVertical: 16,
         paddingHorizontal: 20,
-        borderRadius: 20,
+        borderRadius: 28,
         gap: 8,
     },
     locksSharedText: {
@@ -313,15 +364,17 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     hangup: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         backgroundColor: '#ff4d4d',
-        paddingVertical: 15,
-        paddingHorizontal: 50,
-        borderRadius: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     hangupText: {
         color: '#fff',
         fontWeight: 'bold',
-        fontSize: 18,
+        fontSize: 14,
     },
     lockSelectorOverlay: {
         position: 'absolute',

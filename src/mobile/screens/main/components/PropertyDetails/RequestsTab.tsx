@@ -40,7 +40,7 @@ const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
 
 export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) => {
   const { requests, setStatus, setCallAnswer, addIceCandidate, shareLocks, clearSharedLocks } = useOwnerRequests(propertyId);
-  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState } = useWebRTC(true);
+  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState, isMuted, toggleMute, isFrontCamera, flipCamera } = useWebRTC(true);
 
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
@@ -193,6 +193,10 @@ export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) =
           localStream={localStream}
           connectionState={connectionState}
           smartLocks={smartLocks}
+          isMuted={isMuted}
+          isFrontCamera={isFrontCamera}
+          onToggleMute={toggleMute}
+          onFlipCamera={flipCamera}
           onShareLocks={(locks: SharedLock[]) => {
             shareLocks(activeCallId, locks);
           }}

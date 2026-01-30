@@ -1,88 +1,105 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
+
+// WebRTC types for native platform
+type RTCPeerConnectionType = RTCPeerConnection;
+type MediaStreamType = MediaStream;
+
 // We need to conditionally require react-native-webrtc only on native
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let RTCPeerConnectionNative: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mediaDevicesNative: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let RTCIceCandidateNative: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let RTCSessionDescriptionNative: any;
 
 if (Platform.OS !== 'web') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
     const WebRTC = require('react-native-webrtc');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     RTCPeerConnectionNative = WebRTC.RTCPeerConnection;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     mediaDevicesNative = WebRTC.mediaDevices;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     RTCIceCandidateNative = WebRTC.RTCIceCandidate;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     RTCSessionDescriptionNative = WebRTC.RTCSessionDescription;
 }
 
-export const useWebRTC = (isMobile: boolean) => {
-    const pc = useRef<any | null>(null);
-    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-    const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+export const useWebRTC = (_isMobile: boolean) => {
+    const pc = useRef<RTCPeerConnectionType | null>(null);
+    const [localStream, setLocalStream] = useState<MediaStreamType | null>(null);
+    const [remoteStream, setRemoteStream] = useState<MediaStreamType | null>(null);
     const [connectionState, setConnectionState] = useState<string>('new');
+    const [isMuted, setIsMuted] = useState(false);
+    const [isFrontCamera, setIsFrontCamera] = useState(true);
     const processedCandidates = useRef<Set<string>>(new Set());
 
-    const init = async () => {
+    const init = () => {
         try {
-            console.log('[WebRTC] Initializing peer connection...');
+            // Environment variables for TURN server configuration
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const turnUser: string | undefined = process.env.EXPO_PUBLIC_TURN_USER;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const turnPass: string | undefined = process.env.EXPO_PUBLIC_TURN_PASS;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const turnUrl: string = process.env.EXPO_PUBLIC_TURN_URL ?? 'turn:global.relay.metered.ca:80';
 
-            const config = {
+            const config: RTCConfiguration = {
                 iceServers: [
                     { urls: 'stun:stun.relay.metered.ca:80' },
                     {
-                        urls: process.env.EXPO_PUBLIC_TURN_URL || 'turn:global.relay.metered.ca:80',
-                        username: process.env.EXPO_PUBLIC_TURN_USER,
-                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                        urls: turnUrl,
+                        username: turnUser,
+                        credential: turnPass,
                     },
                     {
                         urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-                        username: process.env.EXPO_PUBLIC_TURN_USER,
-                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                        username: turnUser,
+                        credential: turnPass,
                     },
                     {
                         urls: 'turn:global.relay.metered.ca:443',
-                        username: process.env.EXPO_PUBLIC_TURN_USER,
-                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                        username: turnUser,
+                        credential: turnPass,
                     },
                     {
                         urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-                        username: process.env.EXPO_PUBLIC_TURN_USER,
-                        credential: process.env.EXPO_PUBLIC_TURN_PASS,
+                        username: turnUser,
+                        credential: turnPass,
                     },
                 ],
             };
 
             if (Platform.OS === 'web') {
-                console.log('[WebRTC] Creating RTCPeerConnection for web...');
                 pc.current = new RTCPeerConnection(config);
             } else {
-                console.log('[WebRTC] Creating RTCPeerConnection for native...');
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
                 pc.current = new RTCPeerConnectionNative(config);
             }
 
             // Use ontrack for both web and native (modern API)
-            pc.current.ontrack = (event: any) => {
-                console.log('[WebRTC] Received remote track:', event.track?.kind);
-                if (event.streams && event.streams[0]) {
+            pc.current.ontrack = (event: RTCTrackEvent) => {
+                if (event.streams?.[0]) {
                     setRemoteStream(event.streams[0]);
                 }
             };
 
             // Add connection state monitoring
             pc.current.onconnectionstatechange = () => {
-                const state = pc.current?.connectionState || 'new';
-                console.log('[WebRTC] Connection state:', state);
+                const state = pc.current?.connectionState ?? 'new';
                 setConnectionState(state);
             };
 
             pc.current.oniceconnectionstatechange = () => {
-                console.log('[WebRTC] ICE connection state:', pc.current?.iceConnectionState);
+                // ICE connection state change - used for debugging
             };
 
             pc.current.onicegatheringstatechange = () => {
-                console.log('[WebRTC] ICE gathering state:', pc.current?.iceGatheringState);
+                // ICE gathering state change - used for debugging
             };
-
-            console.log('[WebRTC] Peer connection initialized successfully');
         } catch (err) {
             console.error('[WebRTC] Error initializing peer connection:', err);
             throw err;
@@ -90,34 +107,32 @@ export const useWebRTC = (isMobile: boolean) => {
     };
 
     const addLocalTracks = async () => {
-        const constraints = { video: true, audio: true };
-        let stream;
+        const constraints: MediaStreamConstraints = { video: true, audio: true };
+        let stream: MediaStreamType;
 
         try {
             if (Platform.OS === 'web') {
-                console.log('[WebRTC] Requesting getUserMedia on web...');
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
             } else {
-                console.log('[WebRTC] Requesting getUserMedia on native...');
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                 stream = await mediaDevicesNative.getUserMedia(constraints);
             }
 
-            console.log('[WebRTC] Got media stream, adding tracks...');
-            stream.getTracks().forEach((track: any) => {
-                console.log('[WebRTC] Adding track:', track.kind);
+            stream.getTracks().forEach((track: MediaStreamTrack) => {
                 pc.current?.addTrack(track, stream);
             });
 
             setLocalStream(stream);
-            console.log('[WebRTC] Local stream set successfully');
         } catch (err) {
             console.error('[WebRTC] Error adding local tracks:', err);
-            // Re-throw so caller can handle the error
             throw err;
         }
     };
 
-    const close = () => {
+    const close = useCallback(() => {
+        if (localStream) {
+            localStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+        }
         if (pc.current) {
             pc.current.close();
             pc.current = null;
@@ -125,11 +140,68 @@ export const useWebRTC = (isMobile: boolean) => {
         setLocalStream(null);
         setRemoteStream(null);
         setConnectionState('new');
+        setIsMuted(false);
+        setIsFrontCamera(true);
         processedCandidates.current.clear();
-    };
+    }, [localStream]);
+
+    // Toggle audio mute/unmute
+    const toggleMute = useCallback(() => {
+        if (localStream) {
+            const audioTracks = localStream.getAudioTracks();
+            audioTracks.forEach((track: MediaStreamTrack) => {
+                track.enabled = !track.enabled;
+            });
+            setIsMuted((prev) => !prev);
+        }
+    }, [localStream]);
+
+    // Flip camera (front/back)
+    const flipCamera = useCallback(async () => {
+        if (!localStream || !pc.current) return;
+
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (!videoTrack) return;
+
+        // Stop current video track
+        videoTrack.stop();
+
+        const newFacingMode = isFrontCamera ? 'environment' : 'user';
+        const constraints: MediaStreamConstraints = {
+            video: { facingMode: newFacingMode },
+            audio: false,
+        };
+
+        try {
+            let newStream: MediaStreamType;
+            if (Platform.OS === 'web') {
+                newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            } else {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+                newStream = await mediaDevicesNative.getUserMedia(constraints);
+            }
+
+            const newVideoTrack = newStream.getVideoTracks()[0];
+
+            // Replace track in peer connection
+            const senders = pc.current.getSenders();
+            const videoSender = senders.find((s: RTCRtpSender) => s.track?.kind === 'video');
+            if (videoSender) {
+                await videoSender.replaceTrack(newVideoTrack);
+            }
+
+            // Update local stream with new video track
+            localStream.removeTrack(videoTrack);
+            localStream.addTrack(newVideoTrack);
+
+            setIsFrontCamera((prev) => !prev);
+        } catch (err) {
+            console.error('[WebRTC] Error flipping camera:', err);
+        }
+    }, [localStream, isFrontCamera]);
 
     // Add remote ICE candidate with deduplication
-    const addRemoteIceCandidate = async (candidateData: RTCIceCandidateInit) => {
+    const addRemoteIceCandidate = useCallback(async (candidateData: RTCIceCandidateInit) => {
         if (!pc.current) {
             console.warn('[WebRTC] Cannot add ICE candidate: no peer connection');
             return false;
@@ -137,7 +209,6 @@ export const useWebRTC = (isMobile: boolean) => {
 
         const candidateId = JSON.stringify(candidateData);
         if (processedCandidates.current.has(candidateId)) {
-            console.log('[WebRTC] Skipping duplicate ICE candidate');
             return false;
         }
 
@@ -145,29 +216,37 @@ export const useWebRTC = (isMobile: boolean) => {
             const candidate = createIceCandidate(candidateData);
             await pc.current.addIceCandidate(candidate);
             processedCandidates.current.add(candidateId);
-            console.log('[WebRTC] Added ICE candidate successfully');
             return true;
         } catch (e) {
             console.warn('[WebRTC] Error adding ICE candidate:', e);
             return false;
         }
-    };
+    }, []);
 
     // Helper to ensure we use the correct class for candidates/descriptions
-    const createIceCandidate = (candidate: any) => {
+    const createIceCandidate = (candidate: RTCIceCandidateInit): RTCIceCandidate => {
         if (Platform.OS === 'web') return new RTCIceCandidate(candidate);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
         return new RTCIceCandidateNative(candidate);
     };
 
-    const createSessionDescription = (desc: any) => {
+    const createSessionDescription = (desc: RTCSessionDescriptionInit): RTCSessionDescription => {
         if (Platform.OS === 'web') return new RTCSessionDescription(desc);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
         return new RTCSessionDescriptionNative(desc);
     };
 
     useEffect(() => {
         return () => {
-            close();
-        }
+            // Cleanup on unmount
+            if (localStream) {
+                localStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+            }
+            if (pc.current) {
+                pc.current.close();
+                pc.current = null;
+            }
+        };
     }, []);
 
     return {
@@ -180,6 +259,11 @@ export const useWebRTC = (isMobile: boolean) => {
         createIceCandidate,
         createSessionDescription,
         connectionState,
-        addRemoteIceCandidate
+        addRemoteIceCandidate,
+        // Audio/Video controls
+        isMuted,
+        toggleMute,
+        isFrontCamera,
+        flipCamera,
     };
 };

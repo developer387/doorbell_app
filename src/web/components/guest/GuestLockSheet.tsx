@@ -24,7 +24,6 @@ interface GuestLockSheetProps {
 interface LockItemState {
   isUnlocking: boolean;
   isUnlocked: boolean;
-  autoLockTimeout?: NodeJS.Timeout;
 }
 
 export const GuestLockSheet: React.FC<GuestLockSheetProps> = ({
@@ -83,27 +82,45 @@ interface GuestLockItemProps {
 
 const GuestLockItem: React.FC<GuestLockItemProps> = ({ lock, state, onStateChange }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const maxSwipeDistance = useRef(0);
+  const containerWidth = useRef(0);
+
+  const getMaxSwipeDistance = () => {
+    return Math.max(containerWidth.current - 52, 100); // 44px button + 8px padding
+  };
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !state.isUnlocking && !state.isUnlocked,
-      onMoveShouldSetPanResponder: () => !state.isUnlocking && !state.isUnlocked,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return !state.isUnlocking && !state.isUnlocked && Math.abs(gestureState.dx) > 5;
+      },
       onPanResponderGrant: () => {
+        slideAnim.stopAnimation();
         slideAnim.setOffset(0);
+        slideAnim.setValue(0);
       },
       onPanResponderMove: (_, gestureState) => {
-        const max = maxSwipeDistance.current || 200;
-        const clampedX = Math.min(Math.max(gestureState.dx, 0), max);
+        const maxSwipe = getMaxSwipeDistance();
+        const clampedX = Math.min(Math.max(gestureState.dx, 0), maxSwipe);
         slideAnim.setValue(clampedX);
       },
       onPanResponderRelease: (_, gestureState) => {
-        const max = maxSwipeDistance.current || 200;
-        const threshold = max * 0.8;
+        slideAnim.flattenOffset();
+        const maxSwipe = getMaxSwipeDistance();
+        const threshold = maxSwipe * 0.75; // 75% threshold
 
         if (gestureState.dx >= threshold) {
-          handleUnlock();
+          // Animate to end and unlock
+          Animated.spring(slideAnim, {
+            toValue: maxSwipe,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 7,
+          }).start(() => {
+            handleUnlock();
+          });
         } else {
+          // Snap back
           Animated.spring(slideAnim, {
             toValue: 0,
             useNativeDriver: true,
@@ -122,18 +139,10 @@ const GuestLockItem: React.FC<GuestLockItemProps> = ({ lock, state, onStateChang
 
     try {
       await seamService.unlockDoor(lock.device_id);
-
       onStateChange({ isUnlocking: false, isUnlocked: true });
 
-      // Animate to full swipe
-      const max = maxSwipeDistance.current || 200;
-      Animated.spring(slideAnim, {
-        toValue: max,
-        useNativeDriver: true,
-      }).start();
-
       // Auto-lock after 60 seconds
-      const timeout = setTimeout(async () => {
+      setTimeout(async () => {
         try {
           await seamService.lockDoor(lock.device_id);
         } catch (e) {
@@ -145,8 +154,6 @@ const GuestLockItem: React.FC<GuestLockItemProps> = ({ lock, state, onStateChang
           useNativeDriver: true,
         }).start();
       }, 60000);
-
-      onStateChange({ autoLockTimeout: timeout });
     } catch (error) {
       console.error('Failed to unlock:', error);
       onStateChange({ isUnlocking: false });
@@ -184,7 +191,7 @@ const GuestLockItem: React.FC<GuestLockItemProps> = ({ lock, state, onStateChang
       {/* Swipe to Unlock */}
       <View
         onLayout={(e) => {
-          maxSwipeDistance.current = e.nativeEvent.layout.width - 56;
+          containerWidth.current = e.nativeEvent.layout.width;
         }}
         style={[
           styles.swipeContainer,
@@ -220,12 +227,6 @@ const GuestLockItem: React.FC<GuestLockItemProps> = ({ lock, state, onStateChang
           )}
         </View>
       </View>
-
-      {/* Temporary Passcode Button */}
-      <TouchableOpacity style={styles.passcodeButton}>
-        <Text style={styles.passcodeText}>Set temporary unlock passcode</Text>
-        <ChevronsRight size={18} color="#1a1a1a" />
-      </TouchableOpacity>
     </View>
   );
 };
@@ -319,7 +320,6 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     justifyContent: 'center',
     position: 'relative',
-    marginBottom: 12,
     overflow: 'hidden',
   },
   swipeContainerUnlocked: {
@@ -352,21 +352,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#1a1a1a',
     marginRight: 8,
-  },
-  passcodeButton: {
-    height: 44,
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-  },
-  passcodeText: {
-    fontSize: 14,
-    color: '#1a1a1a',
   },
   endCallButton: {
     marginHorizontal: 16,

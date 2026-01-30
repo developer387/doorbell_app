@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft } from 'lucide-react-native';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { colors } from '@/styles/colors';
 import { useAuth } from '@/context/UserContext';
@@ -73,12 +73,13 @@ export const PropertyDetails = () => {
   }, [property?.smartLocks, propertyId]);
 
   React.useEffect(() => {
-    if (!property?.id) return;
-    const unsub = onSnapshot(collection(db, 'properties', property.id, 'guestRequests'), (snap) => {
+    if (!propertyId) return;
+    const q = query(collection(db, 'guestRequests'), where('propertyId', '==', propertyId));
+    const unsub = onSnapshot(q, (snap) => {
       setRequestCount(snap.size);
     });
     return () => unsub();
-  }, [property?.id]);
+  }, [propertyId]);
 
   const chips: ChipItem[] = [
     { label: 'Property Details', value: 'propertyDetails' },

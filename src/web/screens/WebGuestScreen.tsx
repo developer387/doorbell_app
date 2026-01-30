@@ -7,7 +7,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
 import { PinInput } from '../components/guest/PinInput';
 import { GuestLockSheet } from '../components/guest/GuestLockSheet';
-import { Bell, Star, Phone, Eye, Camera, Mic } from 'lucide-react-native';
+import { Bell, Phone, Eye, Camera, Mic, MicOff, SwitchCamera } from 'lucide-react-native';
 
 export default function WebGuestScreen() {
   const route = useRoute<any>();
@@ -25,7 +25,7 @@ export default function WebGuestScreen() {
   const [debugMessage, setDebugMessage] = useState<string>('');
   const [callDuration, setCallDuration] = useState(0);
   const [showLockSheet, setShowLockSheet] = useState(false);
-  const [rating, setRating] = useState(0);
+  const [hasCompletedCall, setHasCompletedCall] = useState(false);
 
   // Refs
   const answerProcessed = useRef(false);
@@ -36,17 +36,21 @@ export default function WebGuestScreen() {
 
   // Hooks
   const { request, addIceCandidate, setStatus } = useGuestRequest(requestId);
-  const { pc, init, addLocalTracks, remoteStream, localStream, connectionState, addRemoteIceCandidate, close } = useWebRTC(Platform.OS !== 'web');
+  const {
+    pc, init, addLocalTracks, remoteStream, localStream, connectionState,
+    addRemoteIceCandidate, close, isMuted, toggleMute, isFrontCamera, flipCamera
+  } = useWebRTC(Platform.OS !== 'web');
 
   // Pulse animation for ring button
   useEffect(() => {
+    if (hasCompletedCall) return;
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.15, duration: 1500, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
       ])
     ).start();
-  }, []);
+  }, [hasCompletedCall]);
 
   // Call duration timer
   useEffect(() => {
@@ -91,6 +95,7 @@ export default function WebGuestScreen() {
   const handleCallEnded = () => {
     console.log('[Guest] Call ended by owner');
     setCallStatus('ended');
+    setHasCompletedCall(true);
     close();
     if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     if (callTimerRef.current) clearInterval(callTimerRef.current);
@@ -105,6 +110,7 @@ export default function WebGuestScreen() {
     }
     close();
     setCallStatus('ended');
+    setHasCompletedCall(true);
     if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     if (callTimerRef.current) clearInterval(callTimerRef.current);
   };
@@ -113,6 +119,9 @@ export default function WebGuestScreen() {
     if (!propertyId) {
       alert("Missing Property ID");
       return;
+    }
+    if (hasCompletedCall) {
+      return; // Prevent re-ringing after call completed
     }
     setPermissionStatus('prompt');
   };
@@ -150,6 +159,7 @@ export default function WebGuestScreen() {
         if (callStatus === 'calling') {
           setCallStatus('timeout');
           setStatus('timeout');
+          setHasCompletedCall(true);
         }
       }, 60000);
     } catch (err: any) {
@@ -205,6 +215,7 @@ export default function WebGuestScreen() {
     } else if (connectionState === 'failed' || connectionState === 'disconnected') {
       if (callStatus === 'connected') {
         setCallStatus('ended');
+        setHasCompletedCall(true);
       } else {
         setCallStatus('failed');
       }
@@ -239,14 +250,6 @@ export default function WebGuestScreen() {
       alert(`PIN ${pin} entered. Verification logic pending.`);
       setShowPinInput(false);
     }, 1000);
-  };
-
-  const resetToIdle = () => {
-    setRequestId('');
-    setCallStatus('idle');
-    setCallDuration(0);
-    answerProcessed.current = false;
-    processedCandidatesLocal.current.clear();
   };
 
   // Check if owner has shared locks
@@ -333,22 +336,8 @@ export default function WebGuestScreen() {
       )}
 
       {/* Idle - Ring Doorbell Screen */}
-      {!requestId && permissionStatus !== 'prompt' && permissionStatus !== 'denied' && (
+      {!requestId && permissionStatus !== 'prompt' && permissionStatus !== 'denied' && !hasCompletedCall && (
         <View style={styles.contentWrapper}>
-          {/* Star Rating */}
-          <View style={styles.ratingContainer}>
-            {[1, 2, 3, 4, 5].map((star) => (
-              <TouchableOpacity key={star} onPress={() => setRating(star)}>
-                <Star
-                  size={32}
-                  color={star <= rating ? '#f59e0b' : '#4a4a4a'}
-                  fill={star <= rating ? '#f59e0b' : 'transparent'}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={styles.ratingText}>Rate your experience</Text>
-
           {/* Ring Button Label */}
           <View style={styles.ringLabelContainer}>
             <Text style={styles.ringLabel}>Ring DoorBell</Text>
@@ -373,6 +362,27 @@ export default function WebGuestScreen() {
           <TouchableOpacity onPress={() => setShowPinInput(true)} style={styles.pinLink}>
             <Text style={styles.pinLinkText}>I have an Access PIN</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Call Completed - Cannot Ring Again */}
+      {hasCompletedCall && callStatus !== 'calling' && callStatus !== 'connected' && (
+        <View style={styles.contentWrapper}>
+          <View style={styles.endedCard}>
+            <Text style={styles.endedTitle}>
+              {callStatus === 'ended' && 'Call Ended'}
+              {callStatus === 'timeout' && 'No Answer'}
+              {callStatus === 'failed' && 'Connection Failed'}
+            </Text>
+            <Text style={styles.endedSubtitle}>
+              {callStatus === 'ended' && 'Thank you for visiting.'}
+              {callStatus === 'timeout' && 'The owner didn\'t answer.'}
+              {callStatus === 'failed' && 'Please check your connection.'}
+            </Text>
+            <Text style={styles.endedNote}>
+              Please contact the property owner directly{'\n'}if you need further assistance.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -416,53 +426,46 @@ export default function WebGuestScreen() {
                   autoPlay
                   playsInline
                   muted
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', transform: isFrontCamera ? 'scaleX(-1)' : 'none' }}
                 />
               ) : <Text style={{ color: '#fff' }}>Local</Text>}
             </View>
           )}
 
+          {/* Top Controls - Camera Flip */}
+          <View style={styles.topControls}>
+            <TouchableOpacity style={styles.controlButton} onPress={flipCamera}>
+              <SwitchCamera size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
           {/* Bottom Controls */}
           <View style={styles.callControls}>
+            {/* Mute Button */}
+            <TouchableOpacity
+              style={[styles.controlButtonLarge, isMuted && styles.controlButtonActive]}
+              onPress={toggleMute}
+            >
+              {isMuted ? <MicOff size={24} color="#fff" /> : <Mic size={24} color="#fff" />}
+            </TouchableOpacity>
+
             {hasSharedLocks ? (
-              // Two buttons: View Access + End Call
-              <View style={styles.twoButtonRow}>
+              // View Access + End Call
+              <>
                 <TouchableOpacity style={styles.viewAccessButton} onPress={() => setShowLockSheet(true)}>
+                  <Eye size={20} color="#1a1a1a" />
                   <Text style={styles.viewAccessText}>View access</Text>
-                  <Eye size={18} color="#1a1a1a" />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.endCallButtonSmall} onPress={endCall}>
                   <Phone size={24} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
                 </TouchableOpacity>
-              </View>
+              </>
             ) : (
-              // Single End Call button
+              // End Call button only
               <TouchableOpacity style={styles.endCallButton} onPress={endCall}>
-                <Text style={styles.endCallText}>End Call</Text>
-                <Phone size={20} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                <Phone size={24} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
               </TouchableOpacity>
             )}
-          </View>
-        </View>
-      )}
-
-      {/* Call Ended / Timeout / Failed */}
-      {(callStatus === 'ended' || callStatus === 'timeout' || callStatus === 'failed') && (
-        <View style={styles.contentWrapper}>
-          <View style={styles.endedCard}>
-            <Text style={styles.endedTitle}>
-              {callStatus === 'ended' && 'Call Ended'}
-              {callStatus === 'timeout' && 'No Answer'}
-              {callStatus === 'failed' && 'Connection Failed'}
-            </Text>
-            <Text style={styles.endedSubtitle}>
-              {callStatus === 'ended' && 'Thank you for visiting.'}
-              {callStatus === 'timeout' && 'The owner didn\'t answer.'}
-              {callStatus === 'failed' && 'Please check your connection.'}
-            </Text>
-            <TouchableOpacity style={styles.tryAgainButton} onPress={resetToIdle}>
-              <Text style={styles.tryAgainText}>Ring Again</Text>
-            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -492,26 +495,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  // Rating
-  ratingContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  ratingText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 60,
-  },
-
   // Ring Button
   ringLabelContainer: {
     backgroundColor: '#27272a',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
-    marginBottom: 24,
+    marginBottom: 32,
   },
   ringLabel: {
     color: '#fff',
@@ -693,50 +683,71 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#333',
   },
+  topControls: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    right: 130,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  controlButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   callControls: {
     position: 'absolute',
     bottom: 40,
     left: 24,
     right: 24,
-  },
-  endCallButton: {
-    backgroundColor: '#ef4444',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
-    borderRadius: 16,
-    gap: 10,
-  },
-  endCallText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  twoButtonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 16,
+  },
+  controlButtonLarge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  controlButtonActive: {
+    backgroundColor: '#ef4444',
+  },
+  endCallButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   viewAccessButton: {
     flex: 1,
+    maxWidth: 180,
     backgroundColor: '#fff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
-    borderRadius: 16,
-    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 28,
+    gap: 8,
   },
   viewAccessText: {
     color: '#1a1a1a',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   endCallButtonSmall: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#ef4444',
     alignItems: 'center',
     justifyContent: 'center',
@@ -753,19 +764,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   endedSubtitle: {
+    color: '#a1a1aa',
+    fontSize: 16,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  endedNote: {
     color: '#71717a',
-    fontSize: 16,
-    marginBottom: 32,
-  },
-  tryAgainButton: {
-    backgroundColor: '#10b981',
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 12,
-  },
-  tryAgainText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
