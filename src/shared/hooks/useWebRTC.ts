@@ -204,17 +204,25 @@ export const useWebRTC = (_isMobile: boolean) => {
                 await videoSender.replaceTrack(newVideoTrack);
             }
 
-            // Create a new MediaStream with the existing audio track and new video track
-            // This ensures React detects the change and re-renders the local video
-            const audioTrack = localStream.getAudioTracks()[0];
-            const updatedStream = new MediaStream();
-            if (audioTrack) {
-                updatedStream.addTrack(audioTrack);
+            if (Platform.OS === 'web') {
+                // On web, create a new MediaStream to trigger re-render
+                const audioTrack = localStream.getAudioTracks()[0];
+                const updatedStream = new MediaStream();
+                if (audioTrack) {
+                    updatedStream.addTrack(audioTrack);
+                }
+                updatedStream.addTrack(newVideoTrack);
+                setLocalStream(updatedStream);
+            } else {
+                // On native, the newVideoStream already contains the video
+                // We need to preserve the audio track from the original stream
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    newVideoStream.addTrack(audioTrack);
+                }
+                setLocalStream(newVideoStream);
             }
-            updatedStream.addTrack(newVideoTrack);
 
-            // Update state with the new stream to trigger re-render
-            setLocalStream(updatedStream);
             setIsFrontCamera((prev) => !prev);
         } catch (err) {
             console.error('[WebRTC] Error flipping camera:', err);

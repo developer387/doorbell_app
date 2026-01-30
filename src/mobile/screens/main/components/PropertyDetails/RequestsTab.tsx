@@ -174,12 +174,22 @@ export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) =
               </TouchableOpacity>
             )}
 
-            {/* Fallback for pending (old flow or failed calls) */}
-            {request.status === 'pending' && (
-              <Text style={{ color: '#888', fontStyle: 'italic' }}>Missed / Pending Request</Text>
+            {/* Missed Call */}
+            {request.status === 'missed' && (
+              <View style={styles.missedCallBadge}>
+                <Text style={styles.missedCallText}>📵 Missed Call</Text>
+              </View>
             )}
 
-            <Text style={{ marginTop: 5, color: '#888' }}>Status: {request.status}</Text>
+            {/* Fallback for pending (old flow or failed calls) */}
+            {request.status === 'pending' && (
+              <Text style={{ color: '#888', fontStyle: 'italic' }}>Pending Request</Text>
+            )}
+
+            {/* Status indicator */}
+            <Text style={{ marginTop: 5, color: '#888' }}>
+              Status: {request.status === 'missed' ? 'Missed' : request.status}
+            </Text>
           </View>
         )}
       />
@@ -217,6 +227,19 @@ const styles = StyleSheet.create({
   content: { flex: 1, padding: 16 },
   requestCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
   requestHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  missedCallBadge: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  missedCallText: {
+    color: '#dc2626',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   guestInfo: { flexDirection: 'row', gap: 10 },
   avatarPlaceholder: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#eee' },
   videoContainer: { height: 200, backgroundColor: '#000', marginBottom: 10, borderRadius: 8 },

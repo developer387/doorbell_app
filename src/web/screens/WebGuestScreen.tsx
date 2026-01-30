@@ -85,6 +85,39 @@ export default function WebGuestScreen() {
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processedCandidatesLocal = useRef<Set<string>>(new Set());
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const ringingSoundRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize ringing sound for web
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      // Create audio element with a standard ringtone
+      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+      audio.loop = true;
+      audio.volume = 0.5;
+      ringingSoundRef.current = audio;
+
+      return () => {
+        if (ringingSoundRef.current) {
+          ringingSoundRef.current.pause();
+          ringingSoundRef.current = null;
+        }
+      };
+    }
+  }, []);
+
+  // Play/stop ringing sound based on call status
+  useEffect(() => {
+    if (Platform.OS === 'web' && ringingSoundRef.current) {
+      if (callStatus === 'calling') {
+        ringingSoundRef.current.play().catch(() => {
+          // Autoplay may be blocked, that's ok
+        });
+      } else {
+        ringingSoundRef.current.pause();
+        ringingSoundRef.current.currentTime = 0;
+      }
+    }
+  }, [callStatus]);
 
   // Hooks
   const { request, addIceCandidate, setStatus } = useGuestRequest(requestId);
@@ -151,6 +184,11 @@ export default function WebGuestScreen() {
     close();
     if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     if (callTimerRef.current) clearInterval(callTimerRef.current);
+    // Stop ringing sound
+    if (ringingSoundRef.current) {
+      ringingSoundRef.current.pause();
+      ringingSoundRef.current.currentTime = 0;
+    }
   };
 
   const endCall = async () => {
@@ -165,6 +203,11 @@ export default function WebGuestScreen() {
     setHasCompletedCall(true);
     if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     if (callTimerRef.current) clearInterval(callTimerRef.current);
+    // Stop ringing sound
+    if (ringingSoundRef.current) {
+      ringingSoundRef.current.pause();
+      ringingSoundRef.current.currentTime = 0;
+    }
   };
 
   const ringDoorbell = async () => {
@@ -207,13 +250,14 @@ export default function WebGuestScreen() {
       answerProcessed.current = false;
       processedCandidatesLocal.current.clear();
 
+      // 30 second timeout - if owner doesn't answer, it becomes a missed call
       callTimeoutRef.current = setTimeout(() => {
         if (callStatus === 'calling') {
           setCallStatus('timeout');
-          setStatus('timeout');
+          setStatus('missed');
           setHasCompletedCall(true);
         }
-      }, 60000);
+      }, 30000);
     } catch (err: any) {
       console.error("[Guest] Failed to start call:", err);
 
@@ -510,7 +554,7 @@ export default function WebGuestScreen() {
             ) : (
               // End Call button only
               <TouchableOpacity style={styles.endCallButton} onPress={endCall}>
-                <Phone size={24} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                <Text style={styles.hangupText}>End</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -791,6 +835,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  hangupText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   viewAccessButton: {
     flex: 1,
