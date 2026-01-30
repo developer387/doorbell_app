@@ -5,14 +5,10 @@ import { Platform } from 'react-native';
 type RTCPeerConnectionType = RTCPeerConnection;
 type MediaStreamType = MediaStream;
 
-// We need to conditionally require react-native-webrtc only on native
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 let RTCPeerConnectionNative: any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mediaDevicesNative: any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let RTCIceCandidateNative: any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let RTCSessionDescriptionNative: any;
 
 if (Platform.OS !== 'web') {
@@ -107,7 +103,20 @@ export const useWebRTC = (_isMobile: boolean) => {
     };
 
     const addLocalTracks = async () => {
-        const constraints: MediaStreamConstraints = { video: true, audio: true };
+        // High quality video constraints for better video quality
+        const constraints: MediaStreamConstraints = {
+            video: {
+                width: { ideal: 1280, min: 640 },
+                height: { ideal: 720, min: 480 },
+                frameRate: { ideal: 30, min: 15 },
+                facingMode: 'user',
+            },
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+        };
         let stream: MediaStreamType;
 
         try {
@@ -168,20 +177,25 @@ export const useWebRTC = (_isMobile: boolean) => {
 
         const newFacingMode = isFrontCamera ? 'environment' : 'user';
         const constraints: MediaStreamConstraints = {
-            video: { facingMode: newFacingMode },
+            video: {
+                facingMode: newFacingMode,
+                width: { ideal: 1280, min: 640 },
+                height: { ideal: 720, min: 480 },
+                frameRate: { ideal: 30, min: 15 },
+            },
             audio: false,
         };
 
         try {
-            let newStream: MediaStreamType;
+            let newVideoStream: MediaStreamType;
             if (Platform.OS === 'web') {
-                newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                newVideoStream = await navigator.mediaDevices.getUserMedia(constraints);
             } else {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-                newStream = await mediaDevicesNative.getUserMedia(constraints);
+                newVideoStream = await mediaDevicesNative.getUserMedia(constraints);
             }
 
-            const newVideoTrack = newStream.getVideoTracks()[0];
+            const newVideoTrack = newVideoStream.getVideoTracks()[0];
 
             // Replace track in peer connection
             const senders = pc.current.getSenders();
@@ -190,10 +204,17 @@ export const useWebRTC = (_isMobile: boolean) => {
                 await videoSender.replaceTrack(newVideoTrack);
             }
 
-            // Update local stream with new video track
-            localStream.removeTrack(videoTrack);
-            localStream.addTrack(newVideoTrack);
+            // Create a new MediaStream with the existing audio track and new video track
+            // This ensures React detects the change and re-renders the local video
+            const audioTrack = localStream.getAudioTracks()[0];
+            const updatedStream = new MediaStream();
+            if (audioTrack) {
+                updatedStream.addTrack(audioTrack);
+            }
+            updatedStream.addTrack(newVideoTrack);
 
+            // Update state with the new stream to trigger re-render
+            setLocalStream(updatedStream);
             setIsFrontCamera((prev) => !prev);
         } catch (err) {
             console.error('[WebRTC] Error flipping camera:', err);

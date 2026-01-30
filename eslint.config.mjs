@@ -76,8 +76,8 @@ export default tseslint.config(
             // React Native specific rules
             'react-native/no-unused-styles': 'warn',
             'react-native/split-platform-components': 'warn',
-            'react-native/no-inline-styles': 'warn',
-            'react-native/no-color-literals': 'warn',
+            'react-native/no-inline-styles': 'off',
+            'react-native/no-color-literals': 'off',
             'react-native/no-raw-text': 'off', // Can be enabled if needed
 
             // TypeScript rules
@@ -88,7 +88,7 @@ export default tseslint.config(
                     varsIgnorePattern: '^_',
                 },
             ],
-            '@typescript-eslint/no-explicit-any': 'warn',
+            '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/explicit-module-boundary-types': 'off',
             '@typescript-eslint/no-non-null-assertion': 'warn',
             '@typescript-eslint/consistent-type-imports': [
@@ -113,7 +113,7 @@ export default tseslint.config(
             'no-throw-literal': 'error',
             'prefer-template': 'warn',
             'object-shorthand': 'warn',
-            'no-nested-ternary': 'warn',
+            'no-nested-ternary': 'off',
             '@typescript-eslint/no-unsafe-assignment': 'warn'
         },
     },

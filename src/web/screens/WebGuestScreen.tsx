@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Animated } from 'react-native';
 import { useGuestRequest } from '../../shared/hooks/useGuestRequest';
 import { useWebRTC } from '../../shared/hooks/useWebRTC';
@@ -7,7 +7,59 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
 import { PinInput } from '../components/guest/PinInput';
 import { GuestLockSheet } from '../components/guest/GuestLockSheet';
-import { Bell, Phone, Eye, Camera, Mic, MicOff, SwitchCamera } from 'lucide-react-native';
+import { Bell, Phone, Eye, Camera, Mic, MicOff, SwitchCamera, MapPin } from 'lucide-react-native';
+
+// Memoized video component to prevent re-renders when timer updates
+function RemoteVideoComponent({ stream }: { stream: MediaStream | null }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  if (!stream) return null;
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+    />
+  );
+}
+const RemoteVideo = memo(RemoteVideoComponent);
+
+// Memoized local video component
+function LocalVideoComponent({ stream, isFrontCamera }: { stream: MediaStream | null; isFrontCamera: boolean }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  if (!stream) return null;
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        transform: isFrontCamera ? 'scaleX(-1)' : 'none',
+      }}
+    />
+  );
+}
+const LocalVideo = memo(LocalVideoComponent);
 
 export default function WebGuestScreen() {
   const route = useRoute<any>();
@@ -338,6 +390,17 @@ export default function WebGuestScreen() {
       {/* Idle - Ring Doorbell Screen */}
       {!requestId && permissionStatus !== 'prompt' && permissionStatus !== 'denied' && !hasCompletedCall && (
         <View style={styles.contentWrapper}>
+          {/* Property Info */}
+          <View style={styles.propertyInfoContainer}>
+            <Text style={styles.propertyName}>{propertyName}</Text>
+            {propertyAddress ? (
+              <View style={styles.addressRow}>
+                <MapPin size={14} color="#71717a" />
+                <Text style={styles.propertyAddress}>{propertyAddress}</Text>
+              </View>
+            ) : null}
+          </View>
+
           {/* Ring Button Label */}
           <View style={styles.ringLabelContainer}>
             <Text style={styles.ringLabel}>Ring DoorBell</Text>
@@ -388,12 +451,7 @@ export default function WebGuestScreen() {
           <View style={styles.remoteVideoContainer}>
             {remoteStream ? (
               Platform.OS === 'web' ? (
-                <video
-                  ref={v => { if (v) v.srcObject = remoteStream; }}
-                  autoPlay
-                  playsInline
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
+                <RemoteVideo stream={remoteStream} />
               ) : <Text style={{ color: '#fff' }}>Video</Text>
             ) : (
               <View style={styles.waitingContainer}>
@@ -416,13 +474,7 @@ export default function WebGuestScreen() {
           {localStream && (
             <View style={styles.localVideoContainer}>
               {Platform.OS === 'web' ? (
-                <video
-                  ref={v => { if (v) { v.srcObject = localStream; v.muted = true; } }}
-                  autoPlay
-                  playsInline
-                  muted
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', transform: isFrontCamera ? 'scaleX(-1)' : 'none' }}
-                />
+                <LocalVideo stream={localStream} isFrontCamera={isFrontCamera} />
               ) : <Text style={{ color: '#fff' }}>Local</Text>}
             </View>
           )}
@@ -488,6 +540,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+  },
+
+  // Property Info
+  propertyInfoContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  propertyName: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  propertyAddress: {
+    color: '#71717a',
+    fontSize: 14,
+    textAlign: 'center',
   },
 
   // Ring Button
@@ -608,6 +683,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     paddingVertical: 12,
   },
+  // eslint-disable-next-line react-native/no-color-literals
   cancelButtonText: {
     color: '#71717a',
     fontSize: 14,
