@@ -353,11 +353,6 @@ export default function WebGuestScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Description */}
-          <Text style={styles.description}>
-            This will triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
-          </Text>
-
           {/* Access PIN Link */}
           <TouchableOpacity onPress={() => setShowPinInput(true)} style={styles.pinLink}>
             <Text style={styles.pinLinkText}>I have an Access PIN</Text>
@@ -544,13 +539,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-  },
-  description: {
-    color: '#71717a',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 40,
   },
   pinLink: {
     position: 'absolute',
