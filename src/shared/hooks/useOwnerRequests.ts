@@ -1,8 +1,8 @@
 // src/shared/hooks/useOwnerRequests.ts
 import { useEffect, useState, useCallback } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { GuestRequest, IceCandidateRecord } from '../types/GuestRequest';
+import { GuestRequest, IceCandidateRecord, SharedLock } from '../types/GuestRequest';
 
 export const useOwnerRequests = (propertyId: string) => {
     const [requests, setRequests] = useState<GuestRequest[]>([]);
@@ -60,5 +60,15 @@ export const useOwnerRequests = (propertyId: string) => {
         []
     );
 
-    return { requests, setStatus, setCallOffer, addIceCandidate, getAnswer, setCallAnswer };
+    // Share locks with guest during call
+    const shareLocks = useCallback(async (requestId: string, locks: SharedLock[]) => {
+        await updateDoc(doc(db, 'guestRequests', requestId), { sharedLocks: locks });
+    }, []);
+
+    // Clear shared locks
+    const clearSharedLocks = useCallback(async (requestId: string) => {
+        await updateDoc(doc(db, 'guestRequests', requestId), { sharedLocks: deleteField() });
+    }, []);
+
+    return { requests, setStatus, setCallOffer, addIceCandidate, getAnswer, setCallAnswer, shareLocks, clearSharedLocks };
 };

@@ -6,12 +6,12 @@ import { db } from '../../shared/config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
 import { PinInput } from '../components/guest/PinInput';
-import { Bell, House, Camera, Mic } from 'lucide-react-native';
+import { GuestLockSheet } from '../components/guest/GuestLockSheet';
+import { Bell, Star, Phone, Eye, Camera, Mic } from 'lucide-react-native';
 
 export default function WebGuestScreen() {
   const route = useRoute<any>();
   const initialProperty = route.params?.property;
-  // Ensure propertyId can be accessed safely
   const propertyId = initialProperty?.id;
   const propertyName = initialProperty?.propertyName || 'Doorbell';
   const propertyAddress = initialProperty?.address || '';
@@ -19,87 +19,122 @@ export default function WebGuestScreen() {
   const [requestId, setRequestId] = useState<string>('');
   const [showPinInput, setShowPinInput] = useState(false);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
-  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'failed' | 'timeout'>('idle');
+  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'ended' | 'failed' | 'timeout'>('idle');
   const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>('unknown');
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [debugMessage, setDebugMessage] = useState<string>('');
+  const [callDuration, setCallDuration] = useState(0);
+  const [showLockSheet, setShowLockSheet] = useState(false);
+  const [rating, setRating] = useState(0);
 
-  // Refs for tracking state
+  // Refs
   const answerProcessed = useRef(false);
   const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processedCandidatesLocal = useRef<Set<string>>(new Set());
-
-  // Animation for the ring button ripple effect
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // Hooks
+  const { request, addIceCandidate, setStatus } = useGuestRequest(requestId);
+  const { pc, init, addLocalTracks, remoteStream, localStream, connectionState, addRemoteIceCandidate, close } = useWebRTC(Platform.OS !== 'web');
+
+  // Pulse animation for ring button
   useEffect(() => {
-    // Start pulse animation
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
       ])
     ).start();
   }, []);
 
-  // Hooks for Signaling and WebRTC
-  const { request, addIceCandidate, setStatus } = useGuestRequest(requestId);
-  // Only init WebRTC if on mobile/web appropriately
-  const { pc, init, addLocalTracks, remoteStream, localStream, connectionState, addRemoteIceCandidate } = useWebRTC(Platform.OS !== 'web');
-
+  // Call duration timer
   useEffect(() => {
-    if (!propertyId) {
-      console.warn("No property ID found in route params");
+    if (callStatus === 'connected') {
+      callTimerRef.current = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
     }
-  }, [propertyId]);
+    return () => {
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    };
+  }, [callStatus]);
 
-  // 1. Ring Doorbell -> Show permission prompt first
+  // Format call duration as mm:ss
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Listen for call ending by owner
+  useEffect(() => {
+    if (request?.status === 'ended' && callStatus !== 'ended') {
+      handleCallEnded();
+    }
+  }, [request?.status]);
+
+  // Graceful cleanup on page close
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (requestId && callStatus !== 'ended') {
+        setStatus('ended');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }
+  }, [requestId, callStatus, setStatus]);
+
+  const handleCallEnded = () => {
+    console.log('[Guest] Call ended by owner');
+    setCallStatus('ended');
+    close();
+    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+  };
+
+  const endCall = async () => {
+    console.log('[Guest] Ending call');
+    try {
+      await setStatus('ended');
+    } catch (e) {
+      console.error('Error setting status:', e);
+    }
+    close();
+    setCallStatus('ended');
+    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+  };
+
   const ringDoorbell = async () => {
     if (!propertyId) {
       alert("Missing Property ID");
       return;
     }
-
-    // Show permission prompt UI first to explain what we need
     setPermissionStatus('prompt');
   };
 
-  // Actually start the video call (called after user clicks Allow Access)
   const startCall = async () => {
     try {
-      setDebugMessage('Starting call...');
-
-      // A. Init WebRTC
       setDebugMessage('Setting up video connection...');
       await init();
 
-      // B. Get media and add tracks (this triggers browser permission prompt)
       setDebugMessage('Requesting camera & microphone...');
       await addLocalTracks();
 
-      // C. Create Offer
       setDebugMessage('Creating call request...');
       const offer = await pc.current?.createOffer();
-      if (!offer) throw new Error("Failed to create offer - peer connection not ready");
+      if (!offer) throw new Error("Failed to create offer");
       await pc.current?.setLocalDescription(offer);
 
-      // D. Update Database
       setDebugMessage('Connecting to property owner...');
       const docRef = await addDoc(collection(db, 'guestRequests'), {
-        propertyId: propertyId,
+        propertyId,
         status: 'calling',
-        callOffer: {
-          type: offer.type,
-          sdp: offer.sdp
-        },
+        callOffer: { type: offer.type, sdp: offer.sdp },
         createdAt: serverTimestamp(),
         timestamp: new Date().toISOString()
       });
@@ -111,7 +146,6 @@ export default function WebGuestScreen() {
       answerProcessed.current = false;
       processedCandidatesLocal.current.clear();
 
-      // Set up call timeout (60 seconds)
       callTimeoutRef.current = setTimeout(() => {
         if (callStatus === 'calling') {
           setCallStatus('timeout');
@@ -120,59 +154,29 @@ export default function WebGuestScreen() {
       }, 60000);
     } catch (err: any) {
       console.error("[Guest] Failed to start call:", err);
-      setCallStatus('failed');
 
-      // Provide specific error messages shown on screen
-      let errorMsg = '';
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setPermissionStatus('denied');
-        return; // Will show denied UI
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMsg = 'No camera or microphone found on this device.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMsg = 'Camera is in use by another app. Please close other apps and try again.';
-      } else if (err.name === 'OverconstrainedError') {
-        errorMsg = 'Camera does not support required settings.';
-      } else if (err.message?.includes('Firestore') || err.code === 'permission-denied') {
-        errorMsg = 'Cannot connect to server. Check your internet connection.';
-      } else if (err.name === 'TypeError' && err.message?.includes('getUserMedia')) {
-        errorMsg = 'Your browser does not support video calls. Please use Chrome or Safari.';
-      } else {
-        errorMsg = `Error: ${err.name || 'Unknown'} - ${err.message || 'Please try again'}`;
+        return;
       }
 
+      let errorMsg = 'Failed to start call. Please try again.';
+      if (err.name === 'NotFoundError') errorMsg = 'No camera or microphone found.';
+      else if (err.name === 'NotReadableError') errorMsg = 'Camera is in use by another app.';
+
       setDebugMessage(errorMsg);
+      setCallStatus('failed');
       setPermissionStatus('unknown');
     }
   };
 
-  // Handle permission request from prompt UI - just start the call directly
-  // The browser will prompt for permissions when we call getUserMedia in addLocalTracks
   const handleRequestPermission = async () => {
     setIsRequestingPermission(true);
     await startCall();
     setIsRequestingPermission(false);
   };
 
-  // Cleanup timeout on unmount or call end
-  useEffect(() => {
-    return () => {
-      if (callTimeoutRef.current) {
-        clearTimeout(callTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handlePinSubmit = async (pin: string) => {
-    setIsVerifyingPin(true);
-    setTimeout(() => {
-      setIsVerifyingPin(false);
-      alert(`PIN ${pin} entered. Verification logic pending.`);
-      setShowPinInput(false);
-    }, 1000);
-  };
-
-  // 2. Handle Answer from Owner (with race condition prevention)
+  // Handle answer from owner
   useEffect(() => {
     if (request?.status === 'calling' && request.callAnswer && !answerProcessed.current) {
       handleCallAnswer(request.callAnswer);
@@ -180,53 +184,43 @@ export default function WebGuestScreen() {
   }, [request?.callAnswer]);
 
   const handleCallAnswer = async (answer: RTCSessionDescriptionInit) => {
-    if (answerProcessed.current) {
-      console.log('[Guest] Answer already processed, skipping');
-      return;
-    }
-
+    if (answerProcessed.current) return;
     try {
-      console.log('[Guest] Processing call answer');
       answerProcessed.current = true;
       await pc.current?.setRemoteDescription(answer);
-
-      // Clear timeout since call was answered
       if (callTimeoutRef.current) {
         clearTimeout(callTimeoutRef.current);
         callTimeoutRef.current = null;
       }
     } catch (e) {
       console.error("Error setting remote description", e);
-      answerProcessed.current = false; // Allow retry on error
+      answerProcessed.current = false;
     }
   };
 
-  // 2b. Update call status based on connection state
+  // Update call status based on connection state
   useEffect(() => {
     if (connectionState === 'connected') {
       setCallStatus('connected');
     } else if (connectionState === 'failed' || connectionState === 'disconnected') {
-      setCallStatus('failed');
+      if (callStatus === 'connected') {
+        setCallStatus('ended');
+      } else {
+        setCallStatus('failed');
+      }
     }
   }, [connectionState]);
 
-  // 3. Send local ICE candidates to Firestore
+  // ICE candidates
   useEffect(() => {
     if (!pc.current || !requestId) return;
-
-    const onIce = (e: any) => {
-      if (e.candidate) {
-        console.log('[Guest] Sending ICE candidate');
-        addIceCandidate(e.candidate.toJSON(), 'guest');
-      }
+    pc.current.onicecandidate = (e: any) => {
+      if (e.candidate) addIceCandidate(e.candidate.toJSON(), 'guest');
     };
-    pc.current.onicecandidate = onIce;
   }, [pc.current, requestId, addIceCandidate]);
 
-  // 3b. Receive remote ICE candidates (separate effect with deduplication)
   useEffect(() => {
     if (!pc.current || !request?.iceCandidates) return;
-
     request.iceCandidates.forEach((c) => {
       if (c.from === 'owner') {
         const candidateId = JSON.stringify(c.candidate);
@@ -238,6 +232,27 @@ export default function WebGuestScreen() {
     });
   }, [request?.iceCandidates, addRemoteIceCandidate]);
 
+  const handlePinSubmit = async (pin: string) => {
+    setIsVerifyingPin(true);
+    setTimeout(() => {
+      setIsVerifyingPin(false);
+      alert(`PIN ${pin} entered. Verification logic pending.`);
+      setShowPinInput(false);
+    }, 1000);
+  };
+
+  const resetToIdle = () => {
+    setRequestId('');
+    setCallStatus('idle');
+    setCallDuration(0);
+    answerProcessed.current = false;
+    processedCandidatesLocal.current.clear();
+  };
+
+  // Check if owner has shared locks
+  const hasSharedLocks = request?.sharedLocks && request.sharedLocks.length > 0;
+
+  // PIN Input Screen
   if (showPinInput) {
     return (
       <View style={styles.container}>
@@ -249,12 +264,12 @@ export default function WebGuestScreen() {
           propertyAddress={propertyAddress}
         />
       </View>
-    )
+    );
   }
 
   return (
     <View style={styles.container}>
-      {/* State: Permission Prompt */}
+      {/* Permission Prompt */}
       {permissionStatus === 'prompt' && !requestId && (
         <View style={styles.contentWrapper}>
           <View style={styles.permissionCard}>
@@ -270,23 +285,16 @@ export default function WebGuestScreen() {
             <Text style={styles.permissionText}>
               To ring the doorbell and have a video call with the property owner, we need access to your camera and microphone.
             </Text>
-
-            {/* Status/Error Message */}
             {debugMessage ? (
-              <View style={styles.debugMessageContainer}>
-                {!debugMessage.startsWith('Error') && !debugMessage.includes('found') && !debugMessage.includes('use') && !debugMessage.includes('support') && !debugMessage.includes('connect') ? (
+              <View style={styles.debugContainer}>
+                {!debugMessage.includes('failed') && !debugMessage.includes('No ') && !debugMessage.includes('in use') ? (
                   <ActivityIndicator size="small" color="#10b981" style={{ marginRight: 8 }} />
                 ) : null}
-                <Text style={[
-                  styles.debugMessageText,
-                  (debugMessage.startsWith('Error') || debugMessage.includes('found') || debugMessage.includes('use') || debugMessage.includes('support') || debugMessage.includes('connect'))
-                    && { color: '#ef4444' }
-                ]}>
+                <Text style={[styles.debugText, debugMessage.includes('failed') && { color: '#ef4444' }]}>
                   {debugMessage}
                 </Text>
               </View>
             ) : null}
-
             <TouchableOpacity
               style={[styles.permissionButton, isRequestingPermission && { opacity: 0.7 }]}
               onPress={handleRequestPermission}
@@ -296,171 +304,177 @@ export default function WebGuestScreen() {
                 {isRequestingPermission ? 'Please wait...' : 'Allow Access & Call'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.permissionCancelButton}
-              onPress={() => {
-                setPermissionStatus('unknown');
-                setDebugMessage('');
-              }}
-            >
-              <Text style={styles.permissionCancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => { setPermissionStatus('unknown'); setDebugMessage(''); }}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* State: Permission Denied */}
+      {/* Permission Denied */}
       {permissionStatus === 'denied' && !requestId && (
         <View style={styles.contentWrapper}>
           <View style={styles.permissionCard}>
-            <View style={[styles.permissionIconRow, { marginBottom: 16 }]}>
-              <View style={[styles.permissionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' }]}>
-                <Camera size={32} color="#ef4444" />
-              </View>
+            <View style={[styles.permissionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' }]}>
+              <Camera size={32} color="#ef4444" />
             </View>
             <Text style={styles.permissionTitle}>Permission Required</Text>
             <Text style={styles.permissionText}>
-              Camera and microphone access was denied. To use the video doorbell, please enable permissions in your browser settings:
+              Camera and microphone access was denied. Please enable permissions in your browser settings and refresh.
             </Text>
-            <View style={styles.permissionSteps}>
-              <Text style={styles.permissionStep}>1. Click the lock/info icon in your browser's address bar</Text>
-              <Text style={styles.permissionStep}>2. Find Camera and Microphone permissions</Text>
-              <Text style={styles.permissionStep}>3. Change both to "Allow"</Text>
-              <Text style={styles.permissionStep}>4. Refresh this page</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.permissionButton}
-              onPress={() => window.location.reload()}
-            >
+            <TouchableOpacity style={styles.permissionButton} onPress={() => window.location.reload()}>
               <Text style={styles.permissionButtonText}>Refresh Page</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.permissionCancelButton}
-              onPress={() => setPermissionStatus('unknown')}
-            >
-              <Text style={styles.permissionCancelText}>Go Back</Text>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setPermissionStatus('unknown')}>
+              <Text style={styles.cancelButtonText}>Go Back</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* State: Idle (Not Ringing) */}
+      {/* Idle - Ring Doorbell Screen */}
       {!requestId && permissionStatus !== 'prompt' && permissionStatus !== 'denied' && (
         <View style={styles.contentWrapper}>
+          {/* Star Rating */}
+          <View style={styles.ratingContainer}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <TouchableOpacity key={star} onPress={() => setRating(star)}>
+                <Star
+                  size={32}
+                  color={star <= rating ? '#f59e0b' : '#4a4a4a'}
+                  fill={star <= rating ? '#f59e0b' : 'transparent'}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.ratingText}>Rate your experience</Text>
 
-          {/* 1. House Icon / Avatar */}
-          <View style={styles.iconWrapper}>
-            <House size={64} color="#f59e0b" fill="#f59e0b" fillOpacity={0.2} />
+          {/* Ring Button Label */}
+          <View style={styles.ringLabelContainer}>
+            <Text style={styles.ringLabel}>Ring DoorBell</Text>
           </View>
 
-          {/* 2. Property Info */}
-          <View style={styles.textWrapper}>
-            <Text style={styles.propertyTitle}>{propertyName}</Text>
-            {propertyAddress ? <Text style={styles.propertyAddress}>{propertyAddress}</Text> : null}
-          </View>
-
-          {/* 3. Main Action: Ring Doorbell */}
+          {/* Ring Button */}
           <View style={styles.ringButtonContainer}>
-            {/* Ripple Effect Background */}
-            <Animated.View style={[styles.pulseCircle, { transform: [{ scale: pulseAnim }], opacity: 0.3 }]} />
-            <Animated.View style={[styles.pulseCircle, { transform: [{ scale: pulseAnim }], opacity: 0.1, width: 220, height: 220 }]} />
-
+            <Animated.View style={[styles.pulseRing3, { transform: [{ scale: pulseAnim }] }]} />
+            <Animated.View style={[styles.pulseRing2, { transform: [{ scale: pulseAnim }] }]} />
+            <Animated.View style={[styles.pulseRing1, { transform: [{ scale: pulseAnim }] }]} />
             <TouchableOpacity style={styles.ringButton} onPress={ringDoorbell} activeOpacity={0.8}>
-              <Bell size={64} color="#fff" fill="#fff" />
-              <Text style={styles.ringButtonText}>Ring Doorbell</Text>
+              <Bell size={48} color="#fff" fill="#fff" />
             </TouchableOpacity>
           </View>
 
-          {/* 4. Secondary Action: Pin */}
-          <View style={styles.footerAction}>
-            <TouchableOpacity onPress={() => setShowPinInput(true)}>
-              <Text style={styles.linkText}>I have an Access PIN</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Description */}
+          <Text style={styles.description}>
+            This will triggers a 5-second front-camera{'\n'}recording which is sent to the owner.
+          </Text>
 
+          {/* Access PIN Link */}
+          <TouchableOpacity onPress={() => setShowPinInput(true)} style={styles.pinLink}>
+            <Text style={styles.pinLinkText}>I have an Access PIN</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* State: Calling / Connected / Failed / Timeout */}
-      {requestId && (
-        <View style={styles.statusContainer}>
-          {/* Status display with connection state */}
-          <View style={styles.statusHeader}>
-            <Text style={[
-              styles.statusText,
-              callStatus === 'connected' && { color: '#4ade80' },
-              callStatus === 'failed' && { color: '#ef4444' },
-              callStatus === 'timeout' && { color: '#f59e0b' }
-            ]}>
-              {callStatus === 'calling' && 'Calling Owner...'}
-              {callStatus === 'connected' && 'Connected'}
-              {callStatus === 'failed' && 'Connection Failed'}
-              {callStatus === 'timeout' && 'No Answer'}
-            </Text>
-            {callStatus === 'calling' && (
-              <Text style={styles.connectionStateText}>
-                {connectionState === 'connecting' ? 'Establishing connection...' : ''}
-              </Text>
+      {/* Video Call Screen */}
+      {requestId && callStatus !== 'ended' && callStatus !== 'timeout' && callStatus !== 'failed' && (
+        <View style={styles.videoContainer}>
+          {/* Remote Video (Owner) - Full Screen */}
+          <View style={styles.remoteVideoContainer}>
+            {remoteStream ? (
+              Platform.OS === 'web' ? (
+                <video
+                  ref={v => { if (v) v.srcObject = remoteStream; }}
+                  autoPlay
+                  playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : <Text style={{ color: '#fff' }}>Video</Text>
+            ) : (
+              <View style={styles.waitingContainer}>
+                <ActivityIndicator size="large" color="#fff" />
+                <Text style={styles.waitingText}>
+                  {callStatus === 'calling' ? 'Calling owner...' : 'Connecting...'}
+                </Text>
+              </View>
             )}
           </View>
 
-          {/* Timeout/Failed state - show retry option */}
-          {(callStatus === 'timeout' || callStatus === 'failed') && (
-            <View style={styles.retryContainer}>
-              <Text style={styles.retryText}>
-                {callStatus === 'timeout' ? 'The owner didn\'t answer.' : 'The connection failed.'}
-              </Text>
-              <TouchableOpacity
-                style={styles.retryButton}
-                onPress={() => {
-                  setRequestId('');
-                  setCallStatus('idle');
-                  answerProcessed.current = false;
-                }}
-              >
-                <Text style={styles.retryButtonText}>Try Again</Text>
+          {/* Timer Badge */}
+          {callStatus === 'connected' && (
+            <View style={styles.timerBadge}>
+              <Text style={styles.timerText}>{formatDuration(callDuration)}</Text>
+            </View>
+          )}
+
+          {/* Local Video (Self) - Top Right */}
+          {localStream && (
+            <View style={styles.localVideoContainer}>
+              {Platform.OS === 'web' ? (
+                <video
+                  ref={v => { if (v) { v.srcObject = localStream; v.muted = true; } }}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : <Text style={{ color: '#fff' }}>Local</Text>}
+            </View>
+          )}
+
+          {/* Bottom Controls */}
+          <View style={styles.callControls}>
+            {hasSharedLocks ? (
+              // Two buttons: View Access + End Call
+              <View style={styles.twoButtonRow}>
+                <TouchableOpacity style={styles.viewAccessButton} onPress={() => setShowLockSheet(true)}>
+                  <Text style={styles.viewAccessText}>View access</Text>
+                  <Eye size={18} color="#1a1a1a" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.endCallButtonSmall} onPress={endCall}>
+                  <Phone size={24} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              // Single End Call button
+              <TouchableOpacity style={styles.endCallButton} onPress={endCall}>
+                <Text style={styles.endCallText}>End Call</Text>
+                <Phone size={20} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
               </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Video grid - only show when not timeout/failed */}
-          {callStatus !== 'timeout' && callStatus !== 'failed' && (
-            <View style={styles.videoGrid}>
-              {/* Remote Video (Owner) */}
-              <View style={styles.remoteVideo}>
-                {remoteStream ? (
-                  Platform.OS === 'web' ? (
-                    <video
-                      ref={v => { if (v) v.srcObject = remoteStream }}
-                      autoPlay
-                      playsInline
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : <Text style={{ color: '#fff' }}>Mobile Video View</Text>
-                ) : (
-                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                    <ActivityIndicator size="large" color="#fff" />
-                    <Text style={{ color: '#ccc', marginTop: 10 }}>Waiting for owner...</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Local Video (Self View) */}
-              <View style={styles.localVideo}>
-                {localStream && (
-                  Platform.OS === 'web' ? (
-                    <video
-                      ref={v => { if (v) { v.srcObject = localStream; v.muted = true; } }}
-                      autoPlay
-                      playsInline
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : <Text style={{ color: '#fff' }}>Local</Text>
-                )}
-              </View>
-            </View>
-          )}
+            )}
+          </View>
         </View>
+      )}
+
+      {/* Call Ended / Timeout / Failed */}
+      {(callStatus === 'ended' || callStatus === 'timeout' || callStatus === 'failed') && (
+        <View style={styles.contentWrapper}>
+          <View style={styles.endedCard}>
+            <Text style={styles.endedTitle}>
+              {callStatus === 'ended' && 'Call Ended'}
+              {callStatus === 'timeout' && 'No Answer'}
+              {callStatus === 'failed' && 'Connection Failed'}
+            </Text>
+            <Text style={styles.endedSubtitle}>
+              {callStatus === 'ended' && 'Thank you for visiting.'}
+              {callStatus === 'timeout' && 'The owner didn\'t answer.'}
+              {callStatus === 'failed' && 'Please check your connection.'}
+            </Text>
+            <TouchableOpacity style={styles.tryAgainButton} onPress={resetToIdle}>
+              <Text style={styles.tryAgainText}>Ring Again</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Lock Control Sheet */}
+      {showLockSheet && request?.sharedLocks && (
+        <GuestLockSheet
+          visible={showLockSheet}
+          locks={request.sharedLocks}
+          onClose={() => setShowLockSheet(false)}
+          onEndCall={endCall}
+        />
       )}
     </View>
   );
@@ -469,115 +483,97 @@ export default function WebGuestScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#18181b', // zinc-900 
-    alignItems: 'center',
-    justifyContent: 'center'
+    backgroundColor: '#18181b',
   },
   contentWrapper: {
+    flex: 1,
     alignItems: 'center',
-    width: '100%',
-    maxWidth: 400,
-    paddingHorizontal: 20
+    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
 
-  // Icon Section
-  iconWrapper: {
+  // Rating
+  ratingContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  ratingText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 60,
+  },
+
+  // Ring Button
+  ringLabelContainer: {
+    backgroundColor: '#27272a',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
     marginBottom: 24,
-    padding: 20,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)', // amber with opacity
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.2)'
   },
-
-  // Text Section
-  textWrapper: {
-    alignItems: 'center',
-    marginBottom: 60
-  },
-  propertyTitle: {
-    fontSize: 32,
-    fontWeight: '800',
+  ringLabel: {
     color: '#fff',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.5
-  },
-  propertyAddress: {
-    fontSize: 16,
-    color: '#a1a1aa', // zinc-400
-    textAlign: 'center',
-    lineHeight: 24
-  },
-
-  // Ring Button Section
-  ringButtonContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 80,
-    position: 'relative',
-    height: 200,
-    width: 200
-  },
-  pulseCircle: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 100,
-    backgroundColor: '#10b981', // emerald-500 (A nice green ring color)
-    zIndex: 0
-  },
-  ringButton: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)', // Glassmorphic
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#10b981', // emerald-500 border
-    zIndex: 1,
-    shadowColor: '#10b981',
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 10
-  },
-  ringButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1
-  },
-
-  // Footer Actions
-  footerAction: {
-    position: 'absolute',
-    bottom: -60 // Adjust based on screen height usually, but flex container handles it. 
-    // In this flow, we'll rely on margin since we are in a centered view.
-  },
-  linkText: {
-    color: '#10b981', // Link color
     fontSize: 16,
     fontWeight: '600',
-    textDecorationLine: 'underline'
+  },
+  ringButtonContainer: {
+    width: 200,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+  },
+  pulseRing1: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: '#10b981',
+  },
+  pulseRing2: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  pulseRing3: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+  },
+  ringButton: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  description: {
+    color: '#71717a',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 40,
+  },
+  pinLink: {
+    position: 'absolute',
+    bottom: 60,
+  },
+  pinLinkText: {
+    color: '#10b981',
+    fontSize: 16,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 
-  // Calling States
-  statusContainer: { alignItems: 'center', width: '100%', flex: 1, padding: 20 },
-  statusHeader: { alignItems: 'center', marginBottom: 20 },
-  statusText: { color: '#4ade80', fontSize: 20, fontWeight: 'bold' },
-  connectionStateText: { color: '#888', fontSize: 14, marginTop: 5 },
-  videoGrid: { flexDirection: 'column', width: '100%', height: '80%', position: 'relative', borderRadius: 20, overflow: 'hidden', backgroundColor: '#000' },
-  remoteVideo: { flex: 1, backgroundColor: '#000' },
-  localVideo: { position: 'absolute', bottom: 20, right: 20, width: 120, height: 180, backgroundColor: '#333', borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' },
-  retryContainer: { alignItems: 'center', padding: 40 },
-  retryText: { color: '#a1a1aa', fontSize: 16, marginBottom: 20, textAlign: 'center' },
-  retryButton: { backgroundColor: '#10b981', paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12 },
-  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-
-  // Permission UI
+  // Permission
   permissionCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 20,
@@ -586,12 +582,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     maxWidth: 360,
-    width: '100%'
+    width: '100%',
   },
   permissionIconRow: {
     flexDirection: 'row',
     gap: 16,
-    marginBottom: 24
+    marginBottom: 24,
   },
   permissionIcon: {
     width: 64,
@@ -601,32 +597,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)'
+    borderColor: 'rgba(16, 185, 129, 0.2)',
   },
   permissionTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#fff',
     marginBottom: 12,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   permissionText: {
     fontSize: 15,
     color: '#a1a1aa',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24
-  },
-  permissionSteps: {
-    alignSelf: 'stretch',
     marginBottom: 24,
-    paddingHorizontal: 8
-  },
-  permissionStep: {
-    fontSize: 14,
-    color: '#a1a1aa',
-    marginBottom: 8,
-    lineHeight: 20
   },
   permissionButton: {
     backgroundColor: '#10b981',
@@ -635,37 +620,152 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: '100%',
     alignItems: 'center',
-    marginBottom: 12
+    marginBottom: 12,
   },
   permissionButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600'
+    fontWeight: '600',
   },
-  permissionCancelButton: {
+  cancelButton: {
     paddingVertical: 12,
-    paddingHorizontal: 24
   },
-  permissionCancelText: {
+  cancelButtonText: {
     color: '#71717a',
     fontSize: 14,
-    fontWeight: '500'
   },
-  debugMessageContainer: {
+  debugContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    width: '100%',
+  },
+  debugText: {
+    color: '#a1a1aa',
+    fontSize: 14,
+    flex: 1,
+    textAlign: 'center',
+  },
+
+  // Video Call
+  videoContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  remoteVideoContainer: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+  waitingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waitingText: {
+    color: '#fff',
+    marginTop: 16,
+    fontSize: 16,
+  },
+  timerBadge: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  timerText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  localVideoContainer: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    width: 100,
+    height: 140,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#333',
+  },
+  callControls: {
+    position: 'absolute',
+    bottom: 40,
+    left: 24,
+    right: 24,
+  },
+  endCallButton: {
+    backgroundColor: '#ef4444',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 16,
-    width: '100%'
+    paddingVertical: 18,
+    borderRadius: 16,
+    gap: 10,
   },
-  debugMessageText: {
-    color: '#a1a1aa',
-    fontSize: 14,
-    textAlign: 'center',
-    flex: 1
-  }
+  endCallText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  twoButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  viewAccessButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 16,
+    gap: 10,
+  },
+  viewAccessText: {
+    color: '#1a1a1a',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  endCallButtonSmall: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Ended State
+  endedCard: {
+    alignItems: 'center',
+  },
+  endedTitle: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  endedSubtitle: {
+    color: '#71717a',
+    fontSize: 16,
+    marginBottom: 32,
+  },
+  tryAgainButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+  },
+  tryAgainText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });

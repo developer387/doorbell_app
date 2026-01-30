@@ -1,8 +1,8 @@
 // src/shared/hooks/useGuestRequest.ts
 import { useEffect, useState, useCallback } from 'react';
-import { doc, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { GuestRequest, IceCandidateRecord } from '../types/GuestRequest';
+import { GuestRequest, IceCandidateRecord, SharedLock } from '../types/GuestRequest';
 
 export const useGuestRequest = (requestId: string) => {
     const [request, setRequest] = useState<GuestRequest | null>(null);
@@ -58,5 +58,23 @@ export const useGuestRequest = (requestId: string) => {
         [requestId]
     );
 
-    return { request, setStatus, setCallOffer, setCallAnswer, addIceCandidate };
+    // Share locks with guest
+    const shareLocks = useCallback(
+        async (locks: SharedLock[]) => {
+            if (!requestId) return;
+            await updateDoc(doc(db, 'guestRequests', requestId), { sharedLocks: locks });
+        },
+        [requestId]
+    );
+
+    // Clear shared locks
+    const clearSharedLocks = useCallback(
+        async () => {
+            if (!requestId) return;
+            await updateDoc(doc(db, 'guestRequests', requestId), { sharedLocks: deleteField() });
+        },
+        [requestId]
+    );
+
+    return { request, setStatus, setCallOffer, setCallAnswer, addIceCandidate, shareLocks, clearSharedLocks };
 };

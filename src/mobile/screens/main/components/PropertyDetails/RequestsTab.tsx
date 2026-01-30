@@ -9,9 +9,17 @@ import { useWebRTC } from '@/hooks/useWebRTC';
 import { CallModal } from './CallModal';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/config/firebase';
+import { SharedLock } from '@/types/GuestRequest';
+
+interface SmartLock {
+  device_id: string;
+  display_name: string;
+  manufacturer: string;
+}
 
 interface RequestsTabProps {
   propertyId: string;
+  smartLocks?: SmartLock[];
 }
 
 const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
@@ -30,8 +38,8 @@ const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
   );
 };
 
-export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
-  const { requests, setStatus, setCallAnswer, addIceCandidate } = useOwnerRequests(propertyId);
+export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) => {
+  const { requests, setStatus, setCallAnswer, addIceCandidate, shareLocks, clearSharedLocks } = useOwnerRequests(propertyId);
   const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState } = useWebRTC(true);
 
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
@@ -184,7 +192,13 @@ export const RequestsTab = ({ propertyId }: RequestsTabProps) => {
           remoteStream={remoteStream}
           localStream={localStream}
           connectionState={connectionState}
+          smartLocks={smartLocks}
+          onShareLocks={(locks: SharedLock[]) => {
+            shareLocks(activeCallId, locks);
+          }}
           onClose={() => {
+            // Clear shared locks when call ends
+            clearSharedLocks(activeCallId);
             close();
             setActiveCallId(null);
             setStatus(activeCallId, 'ended');

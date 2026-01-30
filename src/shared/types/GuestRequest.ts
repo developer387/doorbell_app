@@ -12,6 +12,16 @@ export interface GuestRequest {
     callOffer?: RTCSessionDescriptionInit;   // Owner → Guest
     callAnswer?: RTCSessionDescriptionInit;  // Guest → Owner
     iceCandidates?: IceCandidateRecord[];    // Shared array
+
+    // Lock sharing during call
+    sharedLocks?: SharedLock[];              // Locks owner has shared with guest
+}
+
+/** Lock shared with guest during video call */
+export interface SharedLock {
+    device_id: string;
+    display_name: string;
+    manufacturer: string;
 }
 
 /** Helper type for ICE candidate entries */
