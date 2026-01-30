@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     splash: {
         image: "./assets/splash-icon.png",
         resizeMode: "contain",
-        backgroundColor: "#007AFF"
+        backgroundColor: "#F5F5F0"
     },
     ios: {
         supportsTablet: true,
@@ -40,6 +40,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     plugins: [
         "expo-web-browser",
         "expo-video",
+        [
+            "expo-splash-screen",
+            {
+                image: "./assets/splash-icon.png",
+                imageWidth: 200,
+                resizeMode: "contain",
+                backgroundColor: "#F5F5F0"
+            }
+        ],
         [
             "expo-camera",
             {
