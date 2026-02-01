@@ -86,6 +86,8 @@ export default function WebGuestScreen() {
   const processedCandidatesLocal = useRef<Set<string>>(new Set());
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const ringingSoundRef = useRef<HTMLAudioElement | null>(null);
+  const requestIdRef = useRef<string | null>(null);
+  const pendingIceCandidates = useRef<RTCIceCandidateInit[]>([]);
 
   // Initialize ringing sound for web
   useEffect(() => {
@@ -123,7 +125,8 @@ export default function WebGuestScreen() {
   const { request, addIceCandidate, setStatus } = useGuestRequest(requestId);
   const {
     pc, init, addLocalTracks, remoteStream, localStream, connectionState,
-    addRemoteIceCandidate, close, isMuted, toggleMute, isFrontCamera, flipCamera
+    addRemoteIceCandidate, close, isMuted, toggleMute, isFrontCamera, flipCamera,
+    setOnIceCandidate
   } = useWebRTC(Platform.OS !== 'web');
 
   // Pulse animation for ring button
@@ -223,6 +226,23 @@ export default function WebGuestScreen() {
 
   const startCall = async () => {
     try {
+      // Reset refs for new call
+      requestIdRef.current = null;
+      pendingIceCandidates.current = [];
+
+      // Set up ICE candidate handler BEFORE init() to capture all candidates
+      // This handler will buffer candidates until we have the requestId
+      setOnIceCandidate((candidate: RTCIceCandidateInit) => {
+        if (requestIdRef.current) {
+          // We have the requestId, send candidate directly to Firestore
+          addIceCandidate(candidate, 'guest');
+        } else {
+          // Buffer the candidate until we have the requestId
+          console.log('[Guest] Buffering ICE candidate until requestId is available');
+          pendingIceCandidates.current.push(candidate);
+        }
+      });
+
       setDebugMessage('Setting up video connection...');
       await init();
 
@@ -243,8 +263,20 @@ export default function WebGuestScreen() {
         timestamp: new Date().toISOString()
       });
 
-      setDebugMessage('');
+      // Store requestId in ref and state
+      requestIdRef.current = docRef.id;
       setRequestId(docRef.id);
+
+      // Flush any buffered ICE candidates now that we have the requestId
+      if (pendingIceCandidates.current.length > 0) {
+        console.log(`[Guest] Flushing ${pendingIceCandidates.current.length} buffered ICE candidates`);
+        for (const candidate of pendingIceCandidates.current) {
+          await addIceCandidate(candidate, 'guest');
+        }
+        pendingIceCandidates.current = [];
+      }
+
+      setDebugMessage('');
       setCallStatus('calling');
       setPermissionStatus('granted');
       answerProcessed.current = false;
@@ -318,13 +350,8 @@ export default function WebGuestScreen() {
     }
   }, [connectionState]);
 
-  // ICE candidates
-  useEffect(() => {
-    if (!pc.current || !requestId) return;
-    pc.current.onicecandidate = (e: any) => {
-      if (e.candidate) addIceCandidate(e.candidate.toJSON(), 'guest');
-    };
-  }, [pc.current, requestId, addIceCandidate]);
+  // ICE candidate handler is now set up in startCall() BEFORE init()
+  // to ensure no candidates are lost during the race condition
 
   useEffect(() => {
     if (!pc.current || !request?.iceCandidates) return;

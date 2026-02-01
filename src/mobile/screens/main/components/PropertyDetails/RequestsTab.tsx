@@ -40,7 +40,7 @@ const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
 
 export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) => {
   const { requests, setStatus, setCallAnswer, addIceCandidate, shareLocks, clearSharedLocks } = useOwnerRequests(propertyId);
-  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState, isMuted, toggleMute, isFrontCamera, flipCamera } = useWebRTC(true);
+  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState, isMuted, toggleMute, isFrontCamera, flipCamera, setOnIceCandidate } = useWebRTC(true);
 
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
@@ -50,6 +50,14 @@ export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) =
   const answerCall = async (req: any) => {
     try {
       console.log("Answering call:", req.id);
+
+      // Set up ICE candidate handler BEFORE init() to capture all candidates
+      // We have the request ID immediately, so we can send candidates directly
+      setOnIceCandidate((candidate: RTCIceCandidateInit) => {
+        console.log('[Owner] Sending ICE candidate to Firestore');
+        addIceCandidate(req.id, candidate);
+      });
+
       setActiveCallId(req.id);
 
       // 1. Init & Media
@@ -114,16 +122,8 @@ export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) =
     return () => unsub();
   }, [activeCallId, addRemoteIceCandidate, close]);
 
-  // SEND ICE (Owner Candidates -> Guest)
-  useEffect(() => {
-    if (!pc.current || !activeCallId) return;
-    const onIce = (e: any) => {
-      if (e.candidate) {
-        addIceCandidate(activeCallId, e.candidate.toJSON());
-      }
-    };
-    pc.current.onicecandidate = onIce;
-  }, [pc.current, activeCallId]);
+  // ICE candidate handler is now set up in answerCall() BEFORE init()
+  // to ensure no candidates are lost during the race condition
 
 
   const toggleVideo = (requestId: string) => {

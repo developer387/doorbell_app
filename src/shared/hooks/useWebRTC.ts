@@ -33,6 +33,21 @@ export const useWebRTC = (_isMobile: boolean) => {
     const [isFrontCamera, setIsFrontCamera] = useState(true);
     const processedCandidates = useRef<Set<string>>(new Set());
 
+    // ICE candidate handling - buffer candidates until handler is ready
+    const iceCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
+    const iceCandidateHandler = useRef<((candidate: RTCIceCandidateInit) => void) | null>(null);
+
+    // Set the ICE candidate handler - call this BEFORE init() to capture all candidates
+    const setOnIceCandidate = useCallback((handler: (candidate: RTCIceCandidateInit) => void) => {
+        iceCandidateHandler.current = handler;
+        // Flush any buffered candidates
+        if (iceCandidateBuffer.current.length > 0) {
+            console.log(`[WebRTC] Flushing ${iceCandidateBuffer.current.length} buffered ICE candidates`);
+            iceCandidateBuffer.current.forEach((candidate) => handler(candidate));
+            iceCandidateBuffer.current = [];
+        }
+    }, []);
+
     const init = () => {
         try {
             // Environment variables for TURN server configuration
@@ -45,7 +60,13 @@ export const useWebRTC = (_isMobile: boolean) => {
 
             const config: RTCConfiguration = {
                 iceServers: [
+                    // Google's public STUN servers (reliable fallback)
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    // Metered.ca STUN server
                     { urls: 'stun:stun.relay.metered.ca:80' },
+                    // Metered.ca TURN servers (required for cross-network connectivity)
                     {
                         urls: turnUrl,
                         username: turnUser,
@@ -69,32 +90,51 @@ export const useWebRTC = (_isMobile: boolean) => {
                 ],
             };
 
+            let peerConnection: RTCPeerConnectionType;
             if (Platform.OS === 'web') {
-                pc.current = new RTCPeerConnection(config);
+                peerConnection = new RTCPeerConnection(config);
             } else {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-                pc.current = new RTCPeerConnectionNative(config);
+                peerConnection = new RTCPeerConnectionNative(config);
             }
+            pc.current = peerConnection;
 
             // Use ontrack for both web and native (modern API)
-            pc.current.ontrack = (event: RTCTrackEvent) => {
+            peerConnection.ontrack = (event: RTCTrackEvent) => {
                 if (event.streams?.[0]) {
                     setRemoteStream(event.streams[0]);
                 }
             };
 
             // Add connection state monitoring
-            pc.current.onconnectionstatechange = () => {
+            peerConnection.onconnectionstatechange = () => {
                 const state = pc.current?.connectionState ?? 'new';
                 setConnectionState(state);
             };
 
-            pc.current.oniceconnectionstatechange = () => {
-                // ICE connection state change - used for debugging
+            peerConnection.oniceconnectionstatechange = () => {
+                const state = pc.current?.iceConnectionState;
+                console.log('[WebRTC] ICE connection state:', state);
             };
 
-            pc.current.onicegatheringstatechange = () => {
-                // ICE gathering state change - used for debugging
+            peerConnection.onicegatheringstatechange = () => {
+                const state = pc.current?.iceGatheringState;
+                console.log('[WebRTC] ICE gathering state:', state);
+            };
+
+            // Set up ICE candidate handler - buffer candidates if handler not ready yet
+            peerConnection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
+                if (event.candidate) {
+                    const candidateInit = event.candidate.toJSON() as RTCIceCandidateInit;
+                    console.log('[WebRTC] ICE candidate gathered:', candidateInit.candidate?.substring(0, 50));
+                    if (iceCandidateHandler.current) {
+                        iceCandidateHandler.current(candidateInit);
+                    } else {
+                        // Buffer the candidate until handler is set
+                        console.log('[WebRTC] Buffering ICE candidate (handler not ready)');
+                        iceCandidateBuffer.current.push(candidateInit);
+                    }
+                }
             };
         } catch (err) {
             console.error('[WebRTC] Error initializing peer connection:', err);
@@ -152,6 +192,9 @@ export const useWebRTC = (_isMobile: boolean) => {
         setIsMuted(false);
         setIsFrontCamera(true);
         processedCandidates.current.clear();
+        // Clear ICE candidate buffer and handler for next call
+        iceCandidateBuffer.current = [];
+        iceCandidateHandler.current = null;
     }, [localStream]);
 
     // Toggle audio mute/unmute
@@ -289,6 +332,8 @@ export const useWebRTC = (_isMobile: boolean) => {
         createSessionDescription,
         connectionState,
         addRemoteIceCandidate,
+        // ICE candidate handling - set handler BEFORE init() to capture all candidates
+        setOnIceCandidate,
         // Audio/Video controls
         isMuted,
         toggleMute,
