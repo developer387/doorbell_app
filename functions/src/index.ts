@@ -221,3 +221,102 @@ async function sendMissedCallNotification(propertyId: string, requestId: string)
         console.error('Error sending missed call notification:', error);
     }
 }
+
+/**
+ * Twilio ICE server credentials response type
+ */
+interface TwilioIceServer {
+    url?: string;
+    urls?: string;
+    username?: string;
+    credential?: string;
+}
+
+interface TwilioTokenResponse {
+    username: string;
+    ice_servers: TwilioIceServer[];
+    ttl: string;
+    date_created: string;
+    date_updated: string;
+    account_sid: string;
+    password: string;
+}
+
+/**
+ * Callable function to get Twilio TURN credentials
+ * Returns ICE servers with temporary credentials for WebRTC connections
+ *
+ * Configure secrets with:
+ *   firebase functions:secrets:set TWILIO_ACCOUNT_SID
+ *   firebase functions:secrets:set TWILIO_API_KEY_SID
+ *   firebase functions:secrets:set TWILIO_API_KEY_SECRET
+ */
+export const getTurnCredentials = functions
+    .runWith({
+        secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET'],
+    })
+    .https.onCall(async () => {
+        const accountSid = process.env.TWILIO_ACCOUNT_SID;
+        const apiKeySid = process.env.TWILIO_API_KEY_SID;
+        const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+
+        // Validate Twilio configuration
+        if (!accountSid || !apiKeySid || !apiKeySecret) {
+            console.error('Twilio secrets missing. Set with: firebase functions:secrets:set TWILIO_ACCOUNT_SID, etc.');
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'TURN server configuration is incomplete'
+            );
+        }
+
+        try {
+            // Request temporary TURN credentials from Twilio
+            const authHeader = Buffer.from(`${apiKeySid}:${apiKeySecret}`).toString('base64');
+            const response = await fetch(
+                `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Tokens.json`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Basic ${authHeader}`,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    // Request 1-hour TTL (default is 24 hours)
+                    body: 'Ttl=3600',
+                }
+            );
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Twilio API error:', response.status, errorText);
+                throw new functions.https.HttpsError(
+                    'internal',
+                    'Failed to fetch TURN credentials from Twilio'
+                );
+            }
+
+            const data = await response.json() as TwilioTokenResponse;
+
+            // Transform Twilio response to standard ICE server format
+            const iceServers = data.ice_servers.map((server: TwilioIceServer) => ({
+                urls: server.urls || server.url,
+                username: server.username,
+                credential: server.credential,
+            }));
+
+            console.log(`Generated TURN credentials, TTL: ${data.ttl}s, servers: ${iceServers.length}`);
+
+            return {
+                iceServers,
+                ttl: parseInt(data.ttl, 10),
+            };
+        } catch (error) {
+            console.error('Error fetching Twilio TURN credentials:', error);
+            if (error instanceof functions.https.HttpsError) {
+                throw error;
+            }
+            throw new functions.https.HttpsError(
+                'internal',
+                'Failed to generate TURN credentials'
+            );
+        }
+    });

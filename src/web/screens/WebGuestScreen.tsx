@@ -126,7 +126,7 @@ export default function WebGuestScreen() {
   const {
     pc, init, addLocalTracks, remoteStream, localStream, connectionState,
     addRemoteIceCandidate, close, isMuted, toggleMute, isFrontCamera, flipCamera,
-    setOnIceCandidate
+    setOnIceCandidate, setRemoteDescriptionAndProcessCandidates
   } = useWebRTC(Platform.OS !== 'web');
 
   // Pulse animation for ring button
@@ -325,7 +325,8 @@ export default function WebGuestScreen() {
     if (answerProcessed.current) return;
     try {
       answerProcessed.current = true;
-      await pc.current?.setRemoteDescription(answer);
+      console.log('[Guest] Setting remote description (owner answer) and processing queued ICE candidates');
+      await setRemoteDescriptionAndProcessCandidates(answer);
       if (callTimeoutRef.current) {
         clearTimeout(callTimeoutRef.current);
         callTimeoutRef.current = null;

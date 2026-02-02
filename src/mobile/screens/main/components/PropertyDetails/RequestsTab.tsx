@@ -40,7 +40,7 @@ const RequestVideoPlayer = ({ videoUrl }: { videoUrl: string }) => {
 
 export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) => {
   const { requests, setStatus, setCallAnswer, addIceCandidate, shareLocks, clearSharedLocks } = useOwnerRequests(propertyId);
-  const { pc, init, addLocalTracks, remoteStream, localStream, close, createSessionDescription, addRemoteIceCandidate, connectionState, isMuted, toggleMute, isFrontCamera, flipCamera, setOnIceCandidate } = useWebRTC(true);
+  const { pc, init, addLocalTracks, remoteStream, localStream, close, addRemoteIceCandidate, connectionState, isMuted, toggleMute, isFrontCamera, flipCamera, setOnIceCandidate, setRemoteDescriptionAndProcessCandidates } = useWebRTC(true);
 
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
@@ -69,9 +69,9 @@ export const RequestsTab = ({ propertyId, smartLocks = [] }: RequestsTabProps) =
         return;
       }
 
-      // 2. Set Remote Desc (Guest's Offer)
-      const desc = createSessionDescription(req.callOffer);
-      await pc.current?.setRemoteDescription(desc);
+      // 2. Set Remote Desc (Guest's Offer) and process any queued ICE candidates
+      console.log('[Owner] Setting remote description (guest offer) and processing queued ICE candidates');
+      await setRemoteDescriptionAndProcessCandidates(req.callOffer);
 
       // 3. Create Answer
       const answer = await pc.current?.createAnswer();

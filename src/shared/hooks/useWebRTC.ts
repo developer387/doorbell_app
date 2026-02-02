@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
+import { getTurnCredentials } from '../utils/getTurnCredentials';
 
 // WebRTC types for native platform
 type RTCPeerConnectionType = RTCPeerConnection;
@@ -37,6 +38,10 @@ export const useWebRTC = (_isMobile: boolean) => {
     const iceCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
     const iceCandidateHandler = useRef<((candidate: RTCIceCandidateInit) => void) | null>(null);
 
+    // Queue for remote ICE candidates received before remote description is set
+    const pendingRemoteCandidates = useRef<RTCIceCandidateInit[]>([]);
+    const hasRemoteDescription = useRef<boolean>(false);
+
     // Set the ICE candidate handler - call this BEFORE init() to capture all candidates
     const setOnIceCandidate = useCallback((handler: (candidate: RTCIceCandidateInit) => void) => {
         iceCandidateHandler.current = handler;
@@ -48,46 +53,28 @@ export const useWebRTC = (_isMobile: boolean) => {
         }
     }, []);
 
-    const init = () => {
+    const init = async () => {
         try {
-            // Environment variables for TURN server configuration
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const turnUser: string | undefined = process.env.EXPO_PUBLIC_TURN_USER;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const turnPass: string | undefined = process.env.EXPO_PUBLIC_TURN_PASS;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const turnUrl: string = process.env.EXPO_PUBLIC_TURN_URL ?? 'turn:global.relay.metered.ca:80';
+            // Reset state for new connection
+            hasRemoteDescription.current = false;
+            pendingRemoteCandidates.current = [];
+
+            // Fetch TURN credentials from Firebase Cloud Function (uses Twilio)
+            console.log('[WebRTC] Fetching TURN credentials...');
+            const iceServers = await getTurnCredentials();
+            console.log(`[WebRTC] Got ${iceServers.length} ICE servers`);
+
+            // Log ICE server types for debugging
+            iceServers.forEach((server, i) => {
+                const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+                urls.forEach(url => {
+                    const type = url.startsWith('turn') ? 'TURN' : 'STUN';
+                    console.log(`[WebRTC] ICE server ${i}: ${type} - ${url}`);
+                });
+            });
 
             const config: RTCConfiguration = {
-                iceServers: [
-                    // Google's public STUN servers (reliable fallback)
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    // Metered.ca STUN server
-                    { urls: 'stun:stun.relay.metered.ca:80' },
-                    // Metered.ca TURN servers (required for cross-network connectivity)
-                    {
-                        urls: turnUrl,
-                        username: turnUser,
-                        credential: turnPass,
-                    },
-                    {
-                        urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-                        username: turnUser,
-                        credential: turnPass,
-                    },
-                    {
-                        urls: 'turn:global.relay.metered.ca:443',
-                        username: turnUser,
-                        credential: turnPass,
-                    },
-                    {
-                        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-                        username: turnUser,
-                        credential: turnPass,
-                    },
-                ],
+                iceServers: iceServers as RTCIceServer[],
             };
 
             let peerConnection: RTCPeerConnectionType;
@@ -126,7 +113,12 @@ export const useWebRTC = (_isMobile: boolean) => {
             peerConnection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
                 if (event.candidate) {
                     const candidateInit = event.candidate.toJSON() as RTCIceCandidateInit;
-                    console.log('[WebRTC] ICE candidate gathered:', candidateInit.candidate?.substring(0, 50));
+                    // Parse candidate type for logging (host, srflx, relay)
+                    const candidateStr = candidateInit.candidate || '';
+                    const typeMatch = candidateStr.match(/typ (\w+)/);
+                    const candidateType = typeMatch ? typeMatch[1] : 'unknown';
+                    console.log(`[WebRTC] ICE candidate gathered: type=${candidateType}`, candidateStr.substring(0, 80));
+
                     if (iceCandidateHandler.current) {
                         iceCandidateHandler.current(candidateInit);
                     } else {
@@ -134,6 +126,9 @@ export const useWebRTC = (_isMobile: boolean) => {
                         console.log('[WebRTC] Buffering ICE candidate (handler not ready)');
                         iceCandidateBuffer.current.push(candidateInit);
                     }
+                } else {
+                    // Null candidate means ICE gathering is complete
+                    console.log('[WebRTC] ICE gathering complete');
                 }
             };
         } catch (err) {
@@ -179,6 +174,7 @@ export const useWebRTC = (_isMobile: boolean) => {
     };
 
     const close = useCallback(() => {
+        console.log('[WebRTC] Closing peer connection');
         if (localStream) {
             localStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
         }
@@ -195,6 +191,9 @@ export const useWebRTC = (_isMobile: boolean) => {
         // Clear ICE candidate buffer and handler for next call
         iceCandidateBuffer.current = [];
         iceCandidateHandler.current = null;
+        // Reset remote description state
+        hasRemoteDescription.current = false;
+        pendingRemoteCandidates.current = [];
     }, [localStream]);
 
     // Toggle audio mute/unmute
@@ -272,7 +271,7 @@ export const useWebRTC = (_isMobile: boolean) => {
         }
     }, [localStream, isFrontCamera]);
 
-    // Add remote ICE candidate with deduplication
+    // Add remote ICE candidate with deduplication and queuing
     const addRemoteIceCandidate = useCallback(async (candidateData: RTCIceCandidateInit) => {
         if (!pc.current) {
             console.warn('[WebRTC] Cannot add ICE candidate: no peer connection');
@@ -284,8 +283,20 @@ export const useWebRTC = (_isMobile: boolean) => {
             return false;
         }
 
+        // Queue the candidate if remote description hasn't been set yet
+        if (!hasRemoteDescription.current) {
+            console.log('[WebRTC] Queuing remote ICE candidate (waiting for remote description)');
+            pendingRemoteCandidates.current.push(candidateData);
+            processedCandidates.current.add(candidateId);
+            return true;
+        }
+
         try {
             const candidate = createIceCandidate(candidateData);
+            const candidateStr = candidateData.candidate || '';
+            const typeMatch = candidateStr.match(/typ (\w+)/);
+            const candidateType = typeMatch ? typeMatch[1] : 'unknown';
+            console.log(`[WebRTC] Adding remote ICE candidate: type=${candidateType}`);
             await pc.current.addIceCandidate(candidate);
             processedCandidates.current.add(candidateId);
             return true;
@@ -294,6 +305,41 @@ export const useWebRTC = (_isMobile: boolean) => {
             return false;
         }
     }, []);
+
+    // Process queued remote ICE candidates after remote description is set
+    const processPendingCandidates = useCallback(async () => {
+        if (!pc.current || pendingRemoteCandidates.current.length === 0) return;
+
+        console.log(`[WebRTC] Processing ${pendingRemoteCandidates.current.length} queued remote ICE candidates`);
+        for (const candidateData of pendingRemoteCandidates.current) {
+            try {
+                const candidate = createIceCandidate(candidateData);
+                await pc.current.addIceCandidate(candidate);
+            } catch (e) {
+                console.warn('[WebRTC] Error adding queued ICE candidate:', e);
+            }
+        }
+        pendingRemoteCandidates.current = [];
+    }, []);
+
+    // Call this after setting remote description
+    const setRemoteDescriptionAndProcessCandidates = useCallback(async (desc: RTCSessionDescriptionInit) => {
+        if (!pc.current) {
+            console.warn('[WebRTC] Cannot set remote description: no peer connection');
+            return;
+        }
+
+        try {
+            const sessionDesc = createSessionDescription(desc);
+            await pc.current.setRemoteDescription(sessionDesc);
+            hasRemoteDescription.current = true;
+            console.log('[WebRTC] Remote description set, processing pending candidates');
+            await processPendingCandidates();
+        } catch (e) {
+            console.error('[WebRTC] Error setting remote description:', e);
+            throw e;
+        }
+    }, [processPendingCandidates]);
 
     // Helper to ensure we use the correct class for candidates/descriptions
     const createIceCandidate = (candidate: RTCIceCandidateInit): RTCIceCandidate => {
@@ -334,6 +380,8 @@ export const useWebRTC = (_isMobile: boolean) => {
         addRemoteIceCandidate,
         // ICE candidate handling - set handler BEFORE init() to capture all candidates
         setOnIceCandidate,
+        // Remote description handling - use this instead of pc.current.setRemoteDescription
+        setRemoteDescriptionAndProcessCandidates,
         // Audio/Video controls
         isMuted,
         toggleMute,
